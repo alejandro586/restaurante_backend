@@ -1,5 +1,6 @@
 import ReportModel from "../models/ReportModel.js"
 import Insight from "../utils/Insight.js"
+import { sendError } from "../utils/apiError.js"
 
 class ReportController {
   async index(req, res) {
@@ -33,7 +34,7 @@ class ReportController {
         })
       })
     } catch (error) {
-      res.status(500).json({ error: "No se pudieron cargar los reportes" })
+      sendError(res, error)
     }
   }
 

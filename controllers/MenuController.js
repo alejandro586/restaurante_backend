@@ -1,10 +1,11 @@
 import MenuModel from "../models/MenuModel.js"
+import { sendError } from "../utils/apiError.js"
 
 const failed = (res, error) => {
   if (error.code === "23503") {
     return res.status(409).json({ error: "El plato o la seccion no existen" })
   }
-  res.status(500).json({ error: "No se pudo completar la operacion" })
+  sendError(res, error)
 }
 
 class MenuController {

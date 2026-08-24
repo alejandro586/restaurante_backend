@@ -1,6 +1,7 @@
 import DishModel from "../models/DishModel.js"
 import Importer from "../utils/Importer.js"
 import { normalizeName } from "../utils/normalize.js"
+import { sendError } from "../utils/apiError.js"
 
 const failed = (res, error) => {
   if (error.code === "23505") {
@@ -9,7 +10,7 @@ const failed = (res, error) => {
   if (error.code === "23503") {
     return res.status(409).json({ error: "La categoria seleccionada no existe" })
   }
-  res.status(500).json({ error: "No se pudo completar la operacion" })
+  sendError(res, error)
 }
 
 class DishController {
