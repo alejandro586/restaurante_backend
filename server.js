@@ -10,7 +10,12 @@ import reportRoutes from "./routes/report.routes.js"
 const app = express()
 const port = process.env.PORT || 3000
 
-app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }))
+const origins = (process.env.CLIENT_URL || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+app.use(cors({ origin: origins.length > 0 ? origins : true }))
 app.use(express.json())
 
 app.use("/api/auth", authRoutes)
