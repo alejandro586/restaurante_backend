@@ -3,7 +3,12 @@ import { normalizeName } from "./normalize.js"
 
 class Importer {
   read(buffer) {
-    const book = XLSX.read(buffer, { type: "buffer", raw: false })
+    const isBinary = buffer[0] === 0x50 && buffer[1] === 0x4b
+
+    const book = isBinary
+      ? XLSX.read(buffer, { type: "buffer", raw: false })
+      : XLSX.read(buffer.toString("utf8").replace(/^﻿/, ""), { type: "string", raw: false })
+
     const sheet = book.Sheets[book.SheetNames[0]]
     return XLSX.utils.sheet_to_json(sheet, { defval: "" })
   }
