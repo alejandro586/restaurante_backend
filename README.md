@@ -53,14 +53,17 @@ backend/
     import.routes.js           Carga y consulta de archivos
     empresa.routes.js          Sugerencias para el modulo del trabajador
     comparar.routes.js         Comparacion entre restaurantes
+    tarea.routes.js            Asignacion de tareas a los trabajadores
   controllers/
     AuthController.js          Registro, verificacion, login y perfil
     ImportController.js        Lectura del archivo y guardado
     EmpresaController.js       Sugerencias de columnas a registrar
     CompararController.js      Analisis de uno o dos archivos
+    TareaController.js         Alta y seguimiento de tareas
   models/
     AuthModel.js               Supabase Auth
     ImportModel.js             Tablas imports e import_rows
+    TareaModel.js              Tabla tareas y destinatarios
   middlewares/
     auth.js                    Valida el token y resuelve el rol desde la base
     upload.js                  Recepcion del archivo con Multer
@@ -73,6 +76,7 @@ backend/
   migrations/
     001_roles_e_imports.sql    Esquema, RLS y trigger de perfiles
     002_rpc_empresa.sql        Funciones que el frontend llama para el DDL
+    003_tareas.sql             Tabla tareas, RLS y cierre automatico
   scripts/
     db.mjs                     Ejecuta SQL contra la Management API
     seed-users.mjs             Crea las cuentas de prueba
@@ -99,6 +103,7 @@ dibuja, nunca que se permite.
 | `imports` | Un registro por archivo: nombre, empresa, si es propia, columnas |
 | `import_rows` | El contenido, en una columna `data` de tipo JSONB |
 | `cambios_estructura` | Bitacora de cada ALTER y CREATE aplicado |
+| `tareas` | Insights que el admin convirtio en orden para un trabajador |
 | `empresa_datos` | Tabla fisica con los datos propios. La crea la primera importacion |
 | `emp_*` | Tablas que crea el trabajador para registrar algo nuevo |
 
@@ -142,6 +147,33 @@ base las ejecuta el navegador, ver la seccion siguiente.
 | Metodo | Ruta | Descripcion |
 |---|---|---|
 | POST | `/api/comparar` | Recibe uno o dos ids y devuelve metricas, series e insights |
+
+### Tareas (solo admin)
+
+| Metodo | Ruta | Descripcion |
+|---|---|---|
+| GET | `/api/tareas/trabajadores` | Trabajadores a los que se puede asignar |
+| GET | `/api/tareas` | Avance de todo lo asignado |
+| POST | `/api/tareas` | Convierte un insight en una tarea |
+| DELETE | `/api/tareas/:id` | Elimina una tarea |
+
+Asignar es potestad del administrador. El trabajador lee y cierra las suyas
+desde su modulo, directo contra la base con RLS.
+
+## Tareas
+
+Cada insight de la comparacion se puede convertir en una orden concreta para un
+trabajador. El sistema no ejecuta nada por el: la tarea se muestra y el
+trabajador la resuelve a mano con el formulario de siempre.
+
+| Tipo de tarea | Origen | Como se cierra |
+|---|---|---|
+| Ejecutable | Insight con `accion` (capacidades faltantes) | Sola, cuando la columna existe |
+| De lectura | Cualquier otro insight | El trabajador la marca a mano |
+
+El cierre automatico vive dentro de `empresa_agregar_columna`, no en el
+frontend: asi la tarea se cierra sin importar por donde se haya creado la
+columna. La funcion devuelve `tareasCerradas` para que la interfaz lo avise.
 
 ## Importacion de archivos
 
