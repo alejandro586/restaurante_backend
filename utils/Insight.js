@@ -1,817 +1,332 @@
-const ORDER = { warning: 0, info: 1 }
+const PESO = { oportunidad: 0, alerta: 1, info: 2 }
 
+const soles = (valor) =>
+  `S/ ${Number(valor || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+const miles = (valor) => Number(valor || 0).toLocaleString("es-PE")
+
+const porcentaje = (parte, total) => (total > 0 ? Math.round((parte / total) * 100) : 0)
+
+/**
+ * Genera las observaciones de la comparacion. Todas las reglas reciben
+ * "nuestra" (la empresa propia) y "otra" (con la que se compara), y solo
+ * hablan cuando la diferencia es lo bastante grande como para importar.
+ */
 class Insight {
-  generate(data) {
-    const context = this.prepare(data)
+  comparar(nuestra, otra) {
+    if (!otra) return this.individual(nuestra)
 
-    const list = [
-      ...this.catalogBalance(context),
-      ...this.menuBalance(context),
-      ...this.missingCategory(context),
-      ...this.repeatedInMenu(context),
-      ...this.emptySections(context),
-      ...this.longSections(context),
-      ...this.itemsWithoutPrice(context),
-      ...this.priceOutlier(context),
-      ...this.priceJumps(context),
-      ...this.priceDrops(context),
-      ...this.priceGap(context),
-      ...this.featuredBalance(context),
-      ...this.missingDescription(context),
-      ...this.unusedDishes(context),
-      ...this.inactiveDishes(context),
-      ...this.menuAging(context),
-      ...this.draftMenus(context),
-      ...this.noSales(context),
-      ...this.salesConcentration(context),
-      ...this.dishesWithoutSales(context),
-      ...this.categoryWithoutSales(context),
-      ...this.pendingOrders(context),
-      ...this.discountImpact(context),
-      ...this.salesTrend(context)
+    // El peso del canal ya explica el delivery con numeros propios, asi que
+    // la regla generica de capacidades no vuelve a mencionarlo.
+    const canal = this.pesoDelCanal(nuestra, otra)
+    const yaCubiertas = canal.length > 0 ? ["delivery"] : []
+
+    const lista = [
+      ...this.brechaIngresos(nuestra, otra),
+      ...this.capacidadesFaltantes(nuestra, otra, yaCubiertas),
+      ...canal,
+      ...this.ticketPromedio(nuestra, otra),
+      ...this.amplitudCatalogo(nuestra, otra),
+      ...this.categoriasFaltantes(nuestra, otra),
+      ...this.concentracion(nuestra, otra),
+      ...this.tendencia(nuestra, otra)
     ]
 
-    if (list.length === 0) {
+    if (lista.length === 0) {
       return [
         {
-          level: "info",
-          title: "Todo en orden",
-          message:
-            "Las cartas estan equilibradas y no se detectan situaciones que requieran atencion."
+          nivel: "info",
+          titulo: "Rendimiento equiparable",
+          mensaje:
+            `${nuestra.empresa} y ${otra.empresa} muestran cifras muy similares en ingresos, ` +
+            `ticket promedio y amplitud de catalogo. No se detectan diferencias estructurales ` +
+            `que expliquen una ventaja de una sobre otra.`
         }
       ]
     }
 
-    return list.sort((a, b) => ORDER[a.level] - ORDER[b.level]).slice(0, 3)
+    return lista.sort((a, b) => PESO[a.nivel] - PESO[b.nivel]).slice(0, 6)
   }
 
-  count(value, singular, plural) {
-    return `${value} ${value === 1 ? singular : plural}`
-  }
+  /** Cuando se elige un solo archivo no hay contra que comparar. */
+  individual(datos) {
+    const lista = []
 
-  prepare({ dishes = [], categories = [], items = [], orders = [], menus = [], pages = [] }) {
-    const dishName = {}
-    const dishCategory = {}
+    if (datos.topProductos.length > 0) {
+      const lider = datos.topProductos[0]
+      const share = porcentaje(lider.ingresos, datos.ingresos)
 
-    dishes.forEach((dish) => {
-      dishName[dish.id] = dish.name
-      dishCategory[dish.id] = dish.category_id
-    })
-
-    const categoryName = {}
-    categories.forEach((category) => {
-      categoryName[category.id] = category.name
-    })
-
-    const publishedMenus = menus.filter((menu) => menu.status === "published")
-
-    return {
-      dishes,
-      categories,
-      items,
-      orders,
-      menus,
-      pages,
-      publishedMenus,
-      dishName,
-      dishCategory,
-      categoryName
+      if (share >= 15) {
+        lista.push({
+          nivel: "alerta",
+          titulo: "Ingresos concentrados en un producto",
+          mensaje:
+            `${lider.nombre} genera ${soles(lider.ingresos)}, el ${share} por ciento de todo el ` +
+            `ingreso registrado. Depender tanto de un solo plato es un riesgo: si sube el costo ` +
+            `de su insumo principal o sale de carta, cae la facturacion completa.`
+        })
+      }
     }
+
+    if (datos.porCategoria.length > 1) {
+      const mayor = datos.porCategoria[0]
+      const menor = datos.porCategoria[datos.porCategoria.length - 1]
+
+      lista.push({
+        nivel: "info",
+        titulo: "Distribucion por categoria",
+        mensaje:
+          `${mayor.nombre} aporta ${soles(mayor.ingresos)} (${porcentaje(mayor.ingresos, datos.ingresos)} ` +
+          `por ciento) y ${menor.nombre} apenas ${soles(menor.ingresos)}. ` +
+          `Compara este archivo con el de otro restaurante para ver si esa diferencia es normal del rubro.`
+      })
+    }
+
+    lista.push({
+      nivel: "info",
+      titulo: "Resumen del archivo",
+      mensaje:
+        `${miles(datos.totalFilas)} filas, ${datos.productos} productos distintos, ` +
+        `${miles(datos.unidades)} unidades y ${soles(datos.ingresos)} de ingreso. ` +
+        `Ticket promedio de ${soles(datos.ticketPromedio)}.`
+    })
+
+    return lista.slice(0, 4)
   }
 
-  catalogBalance({ dishes, categories, categoryName }) {
-    if (categories.length < 2 || dishes.length < 10) return []
+  brechaIngresos(nuestra, otra) {
+    if (nuestra.ingresos <= 0 || otra.ingresos <= 0) return []
 
-    const count = {}
-    categories.forEach((category) => {
-      count[category.id] = 0
-    })
+    const veces = otra.ingresos / nuestra.ingresos
+    if (veces < 1.15) return []
 
-    dishes.forEach((dish) => {
-      if (count[dish.category_id] !== undefined) count[dish.category_id] += 1
-    })
+    const diferencia = otra.ingresos - nuestra.ingresos
 
-    const values = categories.map((category) => ({
-      name: categoryName[category.id],
-      total: count[category.id]
-    }))
-
-    const max = values.reduce((a, b) => (a.total > b.total ? a : b))
-    const min = values.reduce((a, b) => (a.total < b.total ? a : b))
-
-    if (max.total < min.total * 3 || max.total < 5) return []
-
-    const share = Math.round((max.total / dishes.length) * 100)
+    const causa =
+      otra.unidades > nuestra.unidades
+        ? `Vende ${miles(otra.unidades - nuestra.unidades)} unidades mas, asi que la brecha es de volumen, no solo de precio.`
+        : `Lo hace con menos unidades vendidas, asi que la brecha viene del precio y no del volumen.`
 
     return [
       {
-        level: "warning",
-        title: "Catalogo desbalanceado",
-        message:
-          `La categoria ${max.name} concentra ${max.total} platos, el ${share} por ciento del catalogo, ` +
-          `mientras que ${min.name} ${min.total === 0 ? "no tiene ninguno" : `solo tiene ${min.total}`}. ` +
-          `Un catalogo cargado hacia una sola categoria ` +
-          `limita las opciones al armar cartas variadas. Se recomienda ampliar la oferta de ${min.name} ` +
-          `antes de seguir sumando platos de ${max.name}.`
+        nivel: "alerta",
+        titulo: `${otra.empresa} factura ${veces.toFixed(1)} veces mas`,
+        mensaje:
+          `${otra.empresa} registra ${soles(otra.ingresos)} frente a ${soles(nuestra.ingresos)} de ` +
+          `${nuestra.empresa}: una diferencia de ${soles(diferencia)} en el mismo periodo. ${causa}`
       }
     ]
   }
 
-  menuBalance({ items, dishCategory, categoryName, publishedMenus }) {
-    const alerts = []
-
-    publishedMenus.forEach((menu) => {
-      const own = items.filter((item) => item.menu_pages.menus.id === menu.id)
-      if (own.length < 5) return
-
-      const count = {}
-
-      own.forEach((item) => {
-        const category = dishCategory[item.dish_id]
-        if (!category) return
-        count[category] = (count[category] || 0) + 1
-      })
-
-      const keys = Object.keys(count)
-      if (keys.length < 2) return
-
-      const top = keys.reduce((a, b) => (count[a] > count[b] ? a : b))
-      const low = keys.reduce((a, b) => (count[a] < count[b] ? a : b))
-      const share = Math.round((count[top] / own.length) * 100)
-
-      if (share < 55) return
-
-      alerts.push({
-        level: "warning",
-        title: `Carta desbalanceada en ${menu.name}`,
-        message:
-          `El ${share} por ciento de los platos de esta carta son de la categoria ${categoryName[top]} ` +
-          `y solo hay ${count[low]} de ${categoryName[low]}. Una carta concentrada en un solo tipo de plato ` +
-          `reduce el ticket promedio porque el cliente no encuentra con que acompanar. ` +
-          `Se recomienda incorporar mas opciones de ${categoryName[low]}.`
-      })
-    })
-
-    return alerts.slice(0, 2)
-  }
-
-  missingCategory({ items, dishCategory, categories, categoryName, publishedMenus }) {
-    if (categories.length === 0) return []
-
-    const alerts = []
-
-    publishedMenus.forEach((menu) => {
-      const own = items.filter((item) => item.menu_pages.menus.id === menu.id)
-      if (own.length < 4) return
-
-      const present = new Set(own.map((item) => dishCategory[item.dish_id]).filter(Boolean))
-      const missing = categories.filter((category) => !present.has(category.id))
-
-      if (missing.length === 0) return
-
-      const names = missing.map((category) => categoryName[category.id]).join(" y ")
-
-      alerts.push({
-        level: "warning",
-        title: `Faltan categorias en ${menu.name}`,
-        message:
-          `Esta carta no ofrece ninguna opcion de ${names}. Cada categoria ausente es una venta ` +
-          `que se pierde por completo, sobre todo en bebidas y postres, que son las de mayor margen. ` +
-          `Se recomienda agregar al menos dos opciones de ${names} antes de publicarla nuevamente.`
-      })
-    })
-
-    return alerts.slice(0, 2)
-  }
-
-  repeatedInMenu({ items, dishName, publishedMenus }) {
-    const alerts = []
-
-    publishedMenus.forEach((menu) => {
-      const own = items.filter((item) => item.menu_pages.menus.id === menu.id)
-      const count = {}
-
-      own.forEach((item) => {
-        count[item.dish_id] = (count[item.dish_id] || 0) + 1
-      })
-
-      const repeated = Object.keys(count).filter((id) => count[id] > 1)
-      if (repeated.length === 0) return
-
-      const detail = repeated
-        .slice(0, 3)
-        .map((id) => `${dishName[id]} aparece ${count[id]} veces`)
-        .join(", ")
-
-      alerts.push({
-        level: "warning",
-        title: `Platos repetidos en ${menu.name}`,
-        message:
-          `${detail}. Repetir un plato en varias secciones de la misma carta confunde al cliente ` +
-          `y suele generar reclamos cuando los precios no coinciden. Se recomienda dejarlo en una ` +
-          `sola seccion, o diferenciarlo claramente por porcion o presentacion.`
-      })
-    })
-
-    return alerts.slice(0, 2)
-  }
-
-  emptySections({ items, pages }) {
-    const used = new Set(items.map((item) => item.menu_pages.id))
-
-    const empty = pages.filter(
-      (page) => page.menus.status === "published" && !used.has(page.id)
+  /**
+   * La regla central del sistema: que hace la competencia que nosotros ni
+   * siquiera registramos. Cada hallazgo trae la accion concreta para el
+   * modulo del trabajador.
+   */
+  capacidadesFaltantes(nuestra, otra, excluir = []) {
+    const propias = new Set(nuestra.capacidades.map((c) => c.clave))
+    const faltantes = otra.capacidades.filter(
+      (c) => !propias.has(c.clave) && !excluir.includes(c.clave)
     )
 
-    if (empty.length === 0) return []
+    if (faltantes.length === 0) return []
 
-    const detail = empty
-      .slice(0, 3)
-      .map((page) => `${page.section} en ${page.menus.name}`)
-      .join(", ")
+    return faltantes.slice(0, 3).map((capacidad) => {
+      const desglose = otra.porCapacidad[capacidad.clave]
+      let detalle = ""
 
-    return [
-      {
-        level: "warning",
-        title: "Secciones vacias",
-        message:
-          `Hay ${this.count(empty.length, "seccion", "secciones")} de cartas publicadas ` +
-          `sin ningun plato asignado: ${detail}. ` +
-          `Una seccion vacia da la impresion de una carta incompleta. Se recomienda asignarle platos ` +
-          `o eliminarla de la carta.`
-      }
-    ]
-  }
+      // Solo cuentan los grupos que demuestran uso real de la capacidad:
+      // en una columna canal, "Salon" no prueba nada sobre el delivery.
+      const usados = desglose ? desglose.grupos.filter((g) => g.usa) : []
 
-  itemsWithoutPrice({ items }) {
-    const missing = items.filter((item) => !item.price)
+      if (usados.length > 0) {
+        const suma = desglose.ingresoQueUsa
+        const share = porcentaje(suma, otra.ingresos)
 
-    if (missing.length === 0) return []
-
-    const share = Math.round((missing.length / items.length) * 100)
-
-    return [
-      {
-        level: "warning",
-        title: "Platos sin precio",
-        message:
-          `${this.count(missing.length, "plato publicado no tiene", "platos publicados no tienen")} ` +
-          `precio asignado, el ${share} por ciento de la carta. ` +
-          `Sin precio no entran en el calculo del ticket promedio ni en los reportes de rentabilidad. ` +
-          `Se recomienda completar los precios antes de la proxima publicacion.`
-      }
-    ]
-  }
-
-  priceOutlier({ items, dishName }) {
-    const sections = {}
-
-    items.forEach((item) => {
-      const price = Number(item.price)
-      if (!price) return
-
-      const key = item.menu_pages.id
-      if (!sections[key]) {
-        sections[key] = { section: item.menu_pages.section, menu: item.menu_pages.menus.name, rows: [] }
+        detalle = desglose.esMedida
+          ? ` Lo registra en ${miles(desglose.filasConRegistro)} de sus ventas, que suman ${soles(suma)}: ` +
+            `el ${share} por ciento de su facturacion.`
+          : ` En su archivo eso representa ${soles(suma)}, el ${share} por ciento de su facturacion, ` +
+            `sobre ${usados.map((g) => g.nombre).join(", ")}.`
       }
 
-      sections[key].rows.push({ dish: item.dish_id, price })
-    })
-
-    const alerts = []
-
-    Object.values(sections).forEach((group) => {
-      if (group.rows.length < 3) return
-
-      const total = group.rows.reduce((sum, row) => sum + row.price, 0)
-      const average = total / group.rows.length
-      const top = group.rows.reduce((a, b) => (a.price > b.price ? a : b))
-
-      if (top.price < average * 2) return
-
-      alerts.push({
-        level: "info",
-        title: "Precio fuera de rango",
-        message:
-          `${dishName[top.dish]} cuesta ${top.price} en la seccion ${group.section} de ${group.menu}, ` +
-          `mas del doble del promedio de esa seccion, que es ${average.toFixed(2)}. ` +
-          `Un precio muy alejado del resto suele quedar sin rotacion. Se recomienda revisarlo o ` +
-          `moverlo a una seccion de especialidades.`
-      })
-    })
-
-    return alerts.slice(0, 1)
-  }
-
-  priceJumps({ items }) {
-    const history = {}
-
-    items.forEach((item) => {
-      const date = item.menu_pages.menus.menu_date
-      const price = Number(item.price)
-      const name = item.dishes ? item.dishes.name : null
-
-      if (!date || !price || !name) return
-
-      if (!history[name]) history[name] = []
-      history[name].push({ date, price })
-    })
-
-    const alerts = []
-
-    Object.keys(history).forEach((name) => {
-      const rows = history[name].sort((a, b) => a.date.localeCompare(b.date))
-      if (rows.length < 2) return
-
-      const first = rows[0].price
-      const last = rows[rows.length - 1].price
-      const change = ((last - first) / first) * 100
-
-      if (change >= 25) alerts.push({ name, change: Math.round(change), first, last })
-    })
-
-    if (alerts.length === 0) return []
-
-    const top = alerts.sort((a, b) => b.change - a.change)[0]
-
-    return [
-      {
-        level: "warning",
-        title: "Incremento de precio pronunciado",
-        message:
-          `${top.name} paso de ${top.first} a ${top.last} entre cartas, un aumento del ${top.change} por ciento. ` +
-          `Subidas de este tamano se notan y pueden desplazar al cliente hacia opciones mas baratas. ` +
-          `Se recomienda verificar que el costo del insumo lo justifique y escalonar el ajuste.`
-      }
-    ]
-  }
-
-  unusedDishes({ dishes, items, dishName }) {
-    const active = dishes.filter((dish) => dish.is_active)
-    if (active.length === 0) return []
-
-    const used = new Set(items.map((item) => item.dish_id))
-    const idle = active.filter((dish) => !used.has(dish.id))
-
-    if (idle.length === 0) return []
-
-    const share = Math.round((idle.length / active.length) * 100)
-    if (share < 25) return []
-
-    const sample = idle
-      .slice(0, 3)
-      .map((dish) => dishName[dish.id])
-      .join(", ")
-
-    return [
-      {
-        level: share > 60 ? "warning" : "info",
-        title: "Catalogo subutilizado",
-        message:
-          `${idle.length} platos activos, el ${share} por ciento del catalogo, no aparecen en ninguna carta. ` +
-          `Ejemplos: ${sample}. Mantener platos que nunca se ofrecen dificulta encontrar los que si se usan. ` +
-          `Se recomienda incorporarlos a una carta de temporada o darlos de baja.`
-      }
-    ]
-  }
-
-  inactiveDishes({ dishes }) {
-    if (dishes.length < 20) return []
-
-    const inactive = dishes.filter((dish) => !dish.is_active)
-    if (inactive.length === 0) return []
-
-    const share = Math.round((inactive.length / dishes.length) * 100)
-    if (share < 30) return []
-
-    return [
-      {
-        level: "info",
-        title: "Muchos platos inactivos",
-        message:
-          `${inactive.length} platos estan desactivados, el ${share} por ciento del catalogo. ` +
-          `Se recomienda revisar si alguno puede reincorporarse a la carta antes de crear platos nuevos ` +
-          `que cumplan la misma funcion.`
-      }
-    ]
-  }
-
-  salesConcentration({ orders, dishName }) {
-    if (orders.length === 0) return []
-
-    const totals = {}
-    let global = 0
-
-    orders.forEach((order) => {
-      const amount = Number(order.total) || 0
-      totals[order.dish_id] = (totals[order.dish_id] || 0) + amount
-      global += amount
-    })
-
-    if (global === 0) return []
-
-    const ranking = Object.keys(totals)
-      .map((id) => ({ id: Number(id), amount: totals[id] }))
-      .sort((a, b) => b.amount - a.amount)
-
-    const top = ranking[0]
-    const share = Math.round((top.amount / global) * 100)
-
-    if (share < 20) return []
-
-    return [
-      {
-        level: share > 40 ? "warning" : "info",
-        title: "Ventas concentradas en un plato",
-        message:
-          `${dishName[top.id] || "Un plato"} concentra el ${share} por ciento de los ingresos. ` +
-          `Depender de un solo plato es riesgoso si sube el precio del insumo o se agota. ` +
-          `Se recomienda asegurar su abastecimiento y promover platos con margen similar para repartir la demanda.`
-      }
-    ]
-  }
-
-  longSections({ items }) {
-    const sections = {}
-
-    items.forEach((item) => {
-      const key = item.menu_pages.id
-      if (!sections[key]) {
-        sections[key] = { section: item.menu_pages.section, menu: item.menu_pages.menus.name, total: 0 }
-      }
-      sections[key].total += 1
-    })
-
-    const long = Object.values(sections)
-      .filter((group) => group.total > 12)
-      .sort((a, b) => b.total - a.total)
-
-    if (long.length === 0) return []
-
-    const top = long[0]
-
-    return [
-      {
-        level: "info",
-        title: "Seccion demasiado extensa",
-        message:
-          `La seccion ${top.section} de ${top.menu} tiene ${top.total} platos. Las cartas muy largas ` +
-          `alargan la decision del cliente y complican la operacion en cocina. ` +
-          `Se recomienda dejar entre seis y diez opciones por seccion y rotar el resto por temporada.`
-      }
-    ]
-  }
-
-  priceDrops({ items }) {
-    const history = {}
-
-    items.forEach((item) => {
-      const date = item.menu_pages.menus.menu_date
-      const price = Number(item.price)
-      const name = item.dishes ? item.dishes.name : null
-
-      if (!date || !price || !name) return
-
-      if (!history[name]) history[name] = []
-      history[name].push({ date, price })
-    })
-
-    const alerts = []
-
-    Object.keys(history).forEach((name) => {
-      const rows = history[name].sort((a, b) => a.date.localeCompare(b.date))
-      if (rows.length < 2) return
-
-      const first = rows[0].price
-      const last = rows[rows.length - 1].price
-      const change = ((first - last) / first) * 100
-
-      if (change >= 20) alerts.push({ name, change: Math.round(change), first, last })
-    })
-
-    if (alerts.length === 0) return []
-
-    const top = alerts.sort((a, b) => b.change - a.change)[0]
-
-    return [
-      {
-        level: "info",
-        title: "Reduccion de precio",
-        message:
-          `${top.name} bajo de ${top.first} a ${top.last}, una reduccion del ${top.change} por ciento. ` +
-          `Si no respondio a una caida real del costo, el margen se esta absorbiendo. ` +
-          `Se recomienda comparar el precio con el costo actual del insumo antes de mantenerlo.`
-      }
-    ]
-  }
-
-  priceGap({ items }) {
-    const grouped = {}
-
-    items.forEach((item) => {
-      const price = Number(item.price)
-      const name = item.dishes ? item.dishes.name : null
-      if (!price || !name) return
-
-      if (!grouped[name]) grouped[name] = []
-      grouped[name].push(price)
-    })
-
-    const alerts = []
-
-    Object.keys(grouped).forEach((name) => {
-      const prices = grouped[name]
-      if (prices.length < 2) return
-
-      const low = Math.min(...prices)
-      const high = Math.max(...prices)
-
-      if (high < low * 1.5) return
-
-      alerts.push({ name, low, high, gap: Math.round(((high - low) / low) * 100) })
-    })
-
-    if (alerts.length === 0) return []
-
-    const top = alerts.sort((a, b) => b.gap - a.gap)[0]
-
-    return [
-      {
-        level: "warning",
-        title: "Mismo plato con precios muy distintos",
-        message:
-          `${top.name} se ofrece desde ${top.low} hasta ${top.high}, una diferencia del ${top.gap} por ciento ` +
-          `entre cartas. Cuando el cliente nota la brecha percibe un precio arbitrario. ` +
-          `Se recomienda unificar el precio o diferenciar claramente la porcion de cada version.`
-      }
-    ]
-  }
-
-  featuredBalance({ items }) {
-    if (items.length < 6) return []
-
-    const featured = items.filter((item) => item.is_featured).length
-
-    if (featured === 0) {
-      return [
-        {
-          level: "info",
-          title: "Ningun plato destacado",
-          message:
-            `Ninguno de los ${items.length} platos publicados esta marcado como destacado. ` +
-            `Los platos destacados guian la eleccion del cliente hacia las opciones de mejor margen. ` +
-            `Se recomienda destacar entre dos y cuatro por carta.`
+      return {
+        nivel: "oportunidad",
+        titulo: `${capacidad.etiqueta}: lo tiene ${otra.empresa}, nosotros no`,
+        mensaje:
+          `${otra.empresa} registra la columna "${capacidad.columna}" y ${nuestra.empresa} no tiene ` +
+          `nada equivalente.${detalle} Sin ese dato no se puede medir el impacto ni decidir si conviene ` +
+          `implementarlo. El primer paso es empezar a registrarlo.`,
+        accion: {
+          tipo: "agregar_columna",
+          columna: capacidad.sugerencia.columna,
+          tipoDato: capacidad.sugerencia.tipo,
+          ejemplo: capacidad.sugerencia.ejemplo
         }
-      ]
-    }
-
-    const share = Math.round((featured / items.length) * 100)
-
-    if (share < 30) return []
-
-    return [
-      {
-        level: "info",
-        title: "Demasiados platos destacados",
-        message:
-          `${featured} platos estan marcados como destacados, el ${share} por ciento de la carta. ` +
-          `Cuando casi todo esta destacado, el cliente deja de distinguir la recomendacion. ` +
-          `Se recomienda reducirlos a los pocos que realmente quieras impulsar.`
       }
-    ]
-  }
-
-  missingDescription({ dishes }) {
-    const active = dishes.filter((dish) => dish.is_active)
-    if (active.length < 10) return []
-
-    const missing = active.filter((dish) => !dish.description || !dish.description.trim())
-    if (missing.length === 0) return []
-
-    const share = Math.round((missing.length / active.length) * 100)
-    if (share < 20) return []
-
-    return [
-      {
-        level: "info",
-        title: "Platos sin descripcion",
-        message:
-          `${missing.length} platos activos no tienen descripcion, el ${share} por ciento del catalogo. ` +
-          `La descripcion es lo que convence al cliente que no conoce el plato. ` +
-          `Se recomienda completarla al menos en los que aparecen en cartas publicadas.`
-      }
-    ]
-  }
-
-  menuAging({ publishedMenus }) {
-    if (publishedMenus.length === 0) return []
-
-    const dates = publishedMenus
-      .map((menu) => menu.menu_date)
-      .filter(Boolean)
-      .sort()
-
-    if (dates.length === 0) return []
-
-    const last = new Date(dates[dates.length - 1])
-    const today = new Date()
-    const months = Math.floor((today - last) / (1000 * 60 * 60 * 24 * 30))
-
-    if (months < 6) return []
-
-    return [
-      {
-        level: "warning",
-        title: "Carta sin renovar",
-        message:
-          `La carta publicada mas reciente es de hace ${months} meses. Una carta sin cambios pierde ` +
-          `atractivo para el cliente habitual y no refleja los precios ni los insumos de temporada. ` +
-          `Se recomienda preparar una carta nueva o actualizar la vigente.`
-      }
-    ]
-  }
-
-  draftMenus({ menus }) {
-    const drafts = menus.filter((menu) => menu.status === "draft")
-    if (drafts.length === 0) return []
-
-    const names = drafts.slice(0, 3).map((menu) => menu.name).join(", ")
-
-    return [
-      {
-        level: "info",
-        title: "Cartas en borrador",
-        message:
-          `Hay ${this.count(drafts.length, "carta", "cartas")} en borrador: ${names}. ` +
-          `Mientras esten en borrador no entran en los reportes ni son visibles como oferta vigente. ` +
-          `Se recomienda publicarlas o archivarlas para mantener el historial limpio.`
-      }
-    ]
-  }
-
-  noSales({ orders, items }) {
-    if (orders.length > 0 || items.length === 0) return []
-
-    return [
-      {
-        level: "info",
-        title: "Sin ventas registradas",
-        message:
-          `Hay ${items.length} platos publicados pero ninguna venta cargada. Sin ventas no es posible ` +
-          `saber que platos funcionan ni calcular el ticket promedio. ` +
-          `Se recomienda empezar a registrar los pedidos para que los reportes reflejen el negocio real.`
-      }
-    ]
-  }
-
-  categoryWithoutSales({ orders, items, dishCategory, categoryName }) {
-    if (orders.length === 0) return []
-
-    const sold = new Set(orders.map((order) => dishCategory[order.dish_id]).filter(Boolean))
-    const offered = new Set(items.map((item) => dishCategory[item.dish_id]).filter(Boolean))
-
-    const idle = [...offered].filter((id) => !sold.has(id))
-    if (idle.length === 0) return []
-
-    const names = idle.map((id) => categoryName[id]).filter(Boolean).join(" y ")
-    if (!names) return []
-
-    return [
-      {
-        level: "warning",
-        title: "Categoria sin ninguna venta",
-        message:
-          `No se registra una sola venta de ${names}, aunque hay platos publicados en esa categoria. ` +
-          `Suele deberse a que el mozo no la ofrece o a que esta al final de la carta. ` +
-          `Se recomienda sugerirla de forma activa y ubicarla en un lugar mas visible.`
-      }
-    ]
-  }
-
-  pendingOrders({ orders }) {
-    if (orders.length < 5) return []
-
-    const pending = orders.filter((order) => order.status === "pendiente")
-    if (pending.length === 0) return []
-
-    const share = Math.round((pending.length / orders.length) * 100)
-    if (share < 25) return []
-
-    return [
-      {
-        level: "warning",
-        title: "Pedidos pendientes acumulados",
-        message:
-          `${pending.length} pedidos siguen en estado pendiente, el ${share} por ciento del total. ` +
-          `Los pedidos sin cerrar distorsionan el calculo de ingresos y pueden esconder cobros no realizados. ` +
-          `Se recomienda revisarlos y cerrarlos antes de tomar decisiones sobre la carta.`
-      }
-    ]
-  }
-
-  discountImpact({ orders }) {
-    if (orders.length < 5) return []
-
-    let discount = 0
-    let gross = 0
-
-    orders.forEach((order) => {
-      discount += Number(order.discount) || 0
-      gross += (Number(order.quantity) || 0) * (Number(order.unit_price) || 0)
     })
+  }
 
-    if (gross === 0 || discount === 0) return []
+  /** Si la competencia tiene delivery, cuanto le aporta realmente. */
+  pesoDelCanal(nuestra, otra) {
+    const desglose = otra.porCapacidad.delivery
+    if (!desglose) return []
 
-    const share = Math.round((discount / gross) * 100)
+    const propio = nuestra.porCapacidad.delivery
+    if (propio) return []
+
+    const delivery = desglose.grupos.filter((g) => g.usa)
+    if (delivery.length === 0) return []
+
+    const ingreso = desglose.ingresoQueUsa
+    const share = porcentaje(ingreso, otra.ingresos)
+
+    if (share < 8) return []
+
+    return [
+      {
+        nivel: "oportunidad",
+        titulo: `El delivery le aporta el ${share} por ciento a ${otra.empresa}`,
+        mensaje:
+          `De los ${soles(otra.ingresos)} que factura ${otra.empresa}, ${soles(ingreso)} salen del canal ` +
+          `de reparto. ${nuestra.empresa} vende unicamente en salon, de modo que esa porcion del mercado ` +
+          `hoy no se disputa. Aun capturando la mitad de esa proporcion, el ingreso subiria alrededor de ` +
+          `${soles(nuestra.ingresos * (share / 200))}.`
+      }
+    ]
+  }
+
+  ticketPromedio(nuestra, otra) {
+    if (nuestra.ticketPromedio <= 0 || otra.ticketPromedio <= 0) return []
+
+    const diferencia = otra.ticketPromedio - nuestra.ticketPromedio
+    const share = porcentaje(Math.abs(diferencia), nuestra.ticketPromedio)
+
     if (share < 10) return []
 
+    if (diferencia > 0) {
+      return [
+        {
+          nivel: "oportunidad",
+          titulo: `Ticket promedio ${share} por ciento por debajo`,
+          mensaje:
+            `Cada venta de ${otra.empresa} deja ${soles(otra.ticketPromedio)} y cada venta de ` +
+            `${nuestra.empresa} deja ${soles(nuestra.ticketPromedio)}. Con las ${miles(nuestra.unidades)} ` +
+            `unidades que ya se venden, igualar ese ticket significaria ` +
+            `${soles(diferencia * nuestra.unidades)} adicionales sin vender un plato mas.`
+        }
+      ]
+    }
+
     return [
       {
-        level: "warning",
-        title: "Descuentos elevados",
-        message:
-          `Los descuentos representan el ${share} por ciento de la venta bruta. ` +
-          `Un descuento sostenido en ese nivel indica que el precio de carta esta por encima de lo que ` +
-          `el cliente acepta pagar. Se recomienda ajustar los precios en lugar de descontar caso por caso.`
+        nivel: "info",
+        titulo: `Ticket promedio ${share} por ciento por encima`,
+        mensaje:
+          `${nuestra.empresa} cobra ${soles(nuestra.ticketPromedio)} por venta contra ` +
+          `${soles(otra.ticketPromedio)} de ${otra.empresa}. La desventaja no esta en el precio: ` +
+          `revisa volumen y variedad antes de tocar la carta.`
       }
     ]
   }
 
-  salesTrend({ orders }) {
-    if (orders.length < 8) return []
-
-    const totals = {}
-
-    orders.forEach((order) => {
-      if (!order.order_date) return
-      totals[order.order_date] = (totals[order.order_date] || 0) + (Number(order.total) || 0)
-    })
-
-    const dates = Object.keys(totals).sort()
-    if (dates.length < 4) return []
-
-    const half = Math.floor(dates.length / 2)
-    const before = dates.slice(0, half).reduce((sum, date) => sum + totals[date], 0) / half
-    const after =
-      dates.slice(half).reduce((sum, date) => sum + totals[date], 0) / (dates.length - half)
-
-    if (before === 0) return []
-
-    const change = Math.round(((after - before) / before) * 100)
-
-    if (change <= -20) {
-      return [
-        {
-          level: "warning",
-          title: "Ingresos en caida",
-          message:
-            `Los ingresos del periodo mas reciente son ${Math.abs(change)} por ciento menores que los del ` +
-            `periodo anterior. Se recomienda revisar si coincide con un cambio de carta o de precios, ` +
-            `y reforzar la promocion de los platos con mejor margen.`
-        }
-      ]
-    }
-
-    if (change >= 25) {
-      return [
-        {
-          level: "info",
-          title: "Ingresos en alza",
-          message:
-            `Los ingresos crecieron ${change} por ciento respecto al periodo anterior. ` +
-            `Se recomienda identificar que platos impulsaron la subida y asegurar su abastecimiento ` +
-            `antes de que la demanda supere la capacidad de cocina.`
-        }
-      ]
-    }
-
-    return []
-  }
-
-  dishesWithoutSales({ orders, items, dishName }) {
-    if (orders.length === 0) return []
-
-    const sold = new Set(orders.map((order) => order.dish_id))
-    const published = new Set(items.map((item) => item.dish_id))
-    const idle = [...published].filter((id) => !sold.has(id))
-
-    if (idle.length === 0) return []
-
-    const sample = idle
-      .slice(0, 3)
-      .map((id) => dishName[id])
-      .filter(Boolean)
-      .join(", ")
+  amplitudCatalogo(nuestra, otra) {
+    if (nuestra.productos === 0 || otra.productos === 0) return []
+    if (otra.productos < nuestra.productos * 1.25) return []
 
     return [
       {
-        level: "warning",
-        title: "Platos publicados sin ventas",
-        message:
-          `${this.count(idle.length, "plato esta", "platos estan")} en carta pero sin ninguna venta ` +
-          `registrada. Ejemplos: ${sample}. ` +
-          `Ocupan espacio en la carta y obligan a mantener insumos que rotan poco. ` +
-          `Se recomienda destacarlos durante una semana y, si no mejoran, reemplazarlos.`
+        nivel: "info",
+        titulo: "Catalogo mas amplio en la competencia",
+        mensaje:
+          `${otra.empresa} mueve ${otra.productos} productos distintos y ${nuestra.empresa} solo ` +
+          `${nuestra.productos}. Una carta mas amplia capta ocasiones de consumo que hoy se pierden, ` +
+          `aunque tambien sube la complejidad de cocina: conviene ampliar por categoria y medir.`
+      }
+    ]
+  }
+
+  categoriasFaltantes(nuestra, otra) {
+    if (nuestra.porCategoria.length === 0 || otra.porCategoria.length === 0) return []
+
+    const propias = new Set(nuestra.porCategoria.map((c) => c.nombre.toLowerCase()))
+    const faltantes = otra.porCategoria.filter((c) => !propias.has(c.nombre.toLowerCase()))
+
+    if (faltantes.length === 0) return []
+
+    const ingreso = faltantes.reduce((total, c) => total + c.ingresos, 0)
+    const share = porcentaje(ingreso, otra.ingresos)
+
+    if (share < 5) return []
+
+    return [
+      {
+        nivel: "oportunidad",
+        titulo: `Categorias sin cubrir: ${faltantes.map((c) => c.nombre).join(", ")}`,
+        mensaje:
+          `${otra.empresa} factura ${soles(ingreso)} en categorias que ${nuestra.empresa} no trabaja, ` +
+          `el ${share} por ciento de su ingreso. Cada categoria ausente es una venta que no se pierde ` +
+          `frente a un competidor: directamente no existe la oportunidad de hacerla.`
+      }
+    ]
+  }
+
+  concentracion(nuestra) {
+    if (nuestra.topProductos.length === 0 || nuestra.ingresos <= 0) return []
+
+    const lider = nuestra.topProductos[0]
+    const share = porcentaje(lider.ingresos, nuestra.ingresos)
+
+    if (share < 18) return []
+
+    return [
+      {
+        nivel: "alerta",
+        titulo: "Dependencia de un solo plato",
+        mensaje:
+          `${lider.nombre} concentra el ${share} por ciento del ingreso de ${nuestra.empresa} ` +
+          `(${soles(lider.ingresos)}). Un quiebre de stock o una subida del insumo golpea toda la ` +
+          `facturacion. Conviene impulsar el segundo y tercer plato antes de ampliar la carta.`
+      }
+    ]
+  }
+
+  tendencia(nuestra, otra) {
+    if (nuestra.porPeriodo.length < 3 || otra.porPeriodo.length < 3) return []
+
+    const crecimiento = (serie) => {
+      const mitad = Math.floor(serie.length / 2)
+      const inicio = serie.slice(0, mitad).reduce((t, p) => t + p.ingresos, 0)
+      const fin = serie.slice(mitad).reduce((t, p) => t + p.ingresos, 0)
+      return inicio > 0 ? ((fin - inicio) / inicio) * 100 : 0
+    }
+
+    const nuestro = crecimiento(nuestra.porPeriodo)
+    const ajeno = crecimiento(otra.porPeriodo)
+
+    if (Math.abs(ajeno - nuestro) < 12) return []
+
+    if (ajeno > nuestro) {
+      return [
+        {
+          nivel: "alerta",
+          titulo: "La brecha se esta ampliando",
+          mensaje:
+            `En la segunda mitad del periodo ${otra.empresa} crecio ${ajeno.toFixed(0)} por ciento y ` +
+            `${nuestra.empresa} ${nuestro.toFixed(0)} por ciento. No es una ventaja estatica: la distancia ` +
+            `aumenta mes a mes, asi que postergar la reaccion la vuelve mas cara.`
+        }
+      ]
+    }
+
+    return [
+      {
+        nivel: "info",
+        titulo: "Cerrando la brecha",
+        mensaje:
+          `${nuestra.empresa} crecio ${nuestro.toFixed(0)} por ciento en la segunda mitad del periodo ` +
+          `contra ${ajeno.toFixed(0)} por ciento de ${otra.empresa}. La tendencia favorece a la empresa: ` +
+          `conviene sostener lo que se cambio ultimamente.`
       }
     ]
   }

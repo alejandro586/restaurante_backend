@@ -1,70 +1,113 @@
 import * as XLSX from "xlsx"
-import { normalizeName } from "./normalize.js"
+import { aIdentificador, deducirTipo } from "./Estructura.js"
+
+const LIMITE_FILAS = 20000
 
 class Importer {
-  read(buffer) {
-    const isBinary = buffer[0] === 0x50 && buffer[1] === 0x4b
+  /**
+   * Lee el archivo sin asumir ninguna estructura. Un XLSX empieza con la
+   * firma PK de un zip; cualquier otra cosa se trata como texto delimitado.
+   */
+  leer(buffer, nombreArchivo = "") {
+    const esZip = buffer[0] === 0x50 && buffer[1] === 0x4b
 
-    const book = isBinary
-      ? XLSX.read(buffer, { type: "buffer", raw: false })
-      : XLSX.read(buffer.toString("utf8").replace(/^﻿/, ""), { type: "string", raw: false })
+    // En CSV se lee en crudo: si no, la libreria adivina que "2026-01" es
+    // una fecha y la reescribe como "12/31/25", corrompiendo la columna.
+    // En Excel si conviene el formateo, porque las fechas reales estan
+    // guardadas como numero de serie y sin formato saldrian ilegibles.
+    const libro = esZip
+      ? XLSX.read(buffer, { type: "buffer", raw: false, cellDates: true })
+      : XLSX.read(this.texto(buffer), { type: "string", raw: true })
 
-    const sheet = book.Sheets[book.SheetNames[0]]
-    return XLSX.utils.sheet_to_json(sheet, { defval: "" })
+    const hoja = libro.Sheets[libro.SheetNames[0]]
+
+    if (!hoja) {
+      throw Object.assign(new Error("El archivo no tiene ninguna hoja con datos"), { status: 400 })
+    }
+
+    const filas = XLSX.utils.sheet_to_json(hoja, { defval: "", raw: !esZip })
+
+    if (filas.length === 0) {
+      throw Object.assign(new Error("El archivo no tiene filas de datos"), { status: 400 })
+    }
+
+    if (filas.length > LIMITE_FILAS) {
+      throw Object.assign(
+        new Error(`El archivo supera las ${LIMITE_FILAS.toLocaleString("es-PE")} filas permitidas`),
+        { status: 400 }
+      )
+    }
+
+    return {
+      filas,
+      formato: esZip || /\.xlsx?$/i.test(nombreArchivo) ? "excel" : "csv"
+    }
   }
 
-  build(rows, categories) {
-    const map = {}
-    categories.forEach((item) => {
-      map[normalizeName(item.name)] = item.id
-    })
+  /** Quita el BOM que Excel agrega al exportar CSV en UTF-8. */
+  texto(buffer) {
+    return buffer.toString("utf8").replace(/^﻿/, "")
+  }
 
-    const valid = []
-    const errors = []
-    const seen = new Set()
+  /**
+   * Describe la estructura encontrada: cabeceras originales, el nombre
+   * que tendrian como columna de Postgres y el tipo deducido.
+   */
+  analizar(filas) {
+    const cabeceras = []
 
-    rows.forEach((row, index) => {
-      const line = index + 2
-      const name = String(row.name || row.nombre || "").trim()
-
-      if (!name) {
-        errors.push({ line, reason: "El nombre esta vacio" })
-        return
-      }
-
-      const normalized = normalizeName(name)
-
-      if (seen.has(normalized)) {
-        errors.push({ line, reason: `El plato "${name}" esta repetido en el archivo` })
-        return
-      }
-
-      let categoryId = null
-      const rawCategory = String(row.category_id || row.category || row.categoria || "").trim()
-
-      if (rawCategory) {
-        if (/^\d+$/.test(rawCategory)) {
-          categoryId = Number(rawCategory)
-        } else {
-          categoryId = map[normalizeName(rawCategory)] || null
-          if (!categoryId) {
-            errors.push({ line, reason: `La categoria "${rawCategory}" no existe` })
-            return
-          }
-        }
-      }
-
-      seen.add(normalized)
-
-      valid.push({
-        name,
-        name_normalized: normalized,
-        description: String(row.description || row.descripcion || "").trim() || null,
-        category_id: categoryId
+    filas.forEach((fila) => {
+      Object.keys(fila).forEach((clave) => {
+        const limpia = String(clave).trim()
+        if (limpia && !cabeceras.includes(limpia)) cabeceras.push(limpia)
       })
     })
 
-    return { valid, errors }
+    if (cabeceras.length === 0) {
+      throw Object.assign(new Error("No se detectaron columnas en el archivo"), { status: 400 })
+    }
+
+    const usados = new Set()
+
+    return cabeceras.map((cabecera) => {
+      let columna = aIdentificador(cabecera) || "columna"
+
+      // Dos cabeceras distintas pueden colapsar al mismo identificador
+      let intento = columna
+      let n = 2
+      while (usados.has(intento)) {
+        intento = `${columna}_${n}`
+        n += 1
+      }
+      usados.add(intento)
+
+      return {
+        original: cabecera,
+        columna: intento,
+        tipo: deducirTipo(filas.map((fila) => fila[cabecera]))
+      }
+    })
+  }
+
+  /** Deja cada fila con las cabeceras normalizadas y sin claves vacias. */
+  limpiar(filas, estructura) {
+    return filas.map((fila) => {
+      const salida = {}
+
+      estructura.forEach(({ original }) => {
+        const valor = fila[original]
+        salida[original] = typeof valor === "string" ? valor.trim() : (valor ?? "")
+      })
+
+      return salida
+    })
+  }
+
+  /** Descarta las filas totalmente vacias, que Excel suele dejar al final. */
+  sinVacias(filas) {
+    return filas.filter((fila) =>
+      Object.values(fila).some((valor) => String(valor ?? "").trim() !== "")
+    )
   }
 }
 

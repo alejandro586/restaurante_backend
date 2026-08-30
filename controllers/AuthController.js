@@ -1,4 +1,5 @@
 import AuthModel from "../models/AuthModel.js"
+import { adminClient } from "../config/supabase.js"
 
 const messages = {
   "Invalid login credentials": "Correo o contrasena incorrectos",
@@ -12,6 +13,21 @@ const messages = {
 const translate = (text = "") => {
   const key = Object.keys(messages).find((item) => text.includes(item))
   return key ? messages[key] : "Ocurrio un error. Intenta nuevamente"
+}
+
+/**
+ * El rol vive en la tabla profiles, no en el token. Se adjunta a la
+ * respuesta del login para que el frontend sepa que modulos mostrar,
+ * pero cada peticion posterior lo vuelve a verificar en el servidor.
+ */
+const perfilDe = async (userId) => {
+  const { data } = await adminClient()
+    .from("profiles")
+    .select("id,email,full_name,role,empresa")
+    .eq("id", userId)
+    .single()
+
+  return data || null
 }
 
 class AuthController {
@@ -31,7 +47,8 @@ class AuthController {
       const data = await model.register(email, password, fullName || "")
 
       if (data.session) {
-        return res.json({ verified: true, token: data.session.access_token, user: data.user })
+        const perfil = await perfilDe(data.user.id)
+        return res.json({ verified: true, token: data.session.access_token, user: data.user, perfil })
       }
 
       res.json({ verified: false, email })
@@ -50,8 +67,9 @@ class AuthController {
     try {
       const model = new AuthModel()
       const data = await model.verify(email, token)
+      const perfil = await perfilDe(data.user.id)
 
-      res.json({ token: data.session.access_token, user: data.user })
+      res.json({ token: data.session.access_token, user: data.user, perfil })
     } catch (error) {
       res.status(400).json({ error: translate(error.message) })
     }
@@ -83,12 +101,18 @@ class AuthController {
     try {
       const model = new AuthModel()
       const data = await model.login(email, password)
+      const perfil = await perfilDe(data.user.id)
 
-      res.json({ token: data.session.access_token, user: data.user })
+      res.json({ token: data.session.access_token, user: data.user, perfil })
     } catch (error) {
       const pending = error.message.includes("Email not confirmed")
       res.status(400).json({ error: translate(error.message), pending })
     }
+  }
+
+  /** GET /api/auth/me  -> el perfil vigente segun la base */
+  async me(req, res) {
+    res.json({ perfil: req.user })
   }
 }
 

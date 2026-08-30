@@ -1,0 +1,140 @@
+import { adminClient } from "../config/supabase.js"
+
+const LOTE = 500
+
+const CAMPOS =
+  "id,archivo,empresa,es_propia,formato,columnas,total_filas,tabla_fisica,user_id,created_at"
+
+/**
+ * Acceso a las importaciones. Usa el cliente de servicio porque el
+ * controlador ya resolvio el rol: el administrador debe poder leer los
+ * archivos de todos los trabajadores, y RLS por si sola no distingue eso
+ * sin reenviar el token en cada llamada.
+ */
+class ImportModel {
+  constructor(user) {
+    this.user = user
+    this.db = adminClient()
+  }
+
+  /** El trabajador solo ve lo suyo. El administrador ve todo. */
+  aplicarAlcance(query) {
+    if (this.user.role === "admin") return query
+    return query.eq("user_id", this.user.id)
+  }
+
+  async listar({ soloPropias = null } = {}) {
+    let query = this.db.from("imports").select(CAMPOS).order("created_at", { ascending: false })
+
+    query = this.aplicarAlcance(query)
+
+    if (soloPropias === true) query = query.eq("es_propia", true)
+    if (soloPropias === false) query = query.eq("es_propia", false)
+
+    const { data, error } = await query
+    if (error) throw error
+
+    return data
+  }
+
+  async buscar(id) {
+    const { data, error } = await this.aplicarAlcance(
+      this.db.from("imports").select(CAMPOS).eq("id", id)
+    ).maybeSingle()
+
+    if (error) throw error
+    return data
+  }
+
+  async crear(datos) {
+    const { data, error } = await this.db
+      .from("imports")
+      .insert({ ...datos, user_id: this.user.id })
+      .select(CAMPOS)
+      .single()
+
+    if (error) throw error
+    return data
+  }
+
+  /** Inserta por lotes: un archivo de 20 mil filas no entra en un solo insert. */
+  async guardarFilas(importId, filas) {
+    for (let i = 0; i < filas.length; i += LOTE) {
+      const lote = filas.slice(i, i + LOTE).map((data, indice) => ({
+        import_id: importId,
+        fila: i + indice + 1,
+        data
+      }))
+
+      const { error } = await this.db.from("import_rows").insert(lote)
+      if (error) throw error
+    }
+
+    return filas.length
+  }
+
+  async filas(importId, { limite = null, desde = 0 } = {}) {
+    let query = this.db
+      .from("import_rows")
+      .select("fila,data")
+      .eq("import_id", importId)
+      .order("fila", { ascending: true })
+
+    if (limite) query = query.range(desde, desde + limite - 1)
+
+    const { data, error } = await query
+    if (error) throw error
+
+    return data.map((registro) => registro.data)
+  }
+
+  async contarFilas(importId) {
+    const { count, error } = await this.db
+      .from("import_rows")
+      .select("id", { count: "exact", head: true })
+      .eq("import_id", importId)
+
+    if (error) throw error
+    return count || 0
+  }
+
+  async eliminar(id) {
+    // import_rows cae por la clave foranea con on delete cascade
+    const { error } = await this.db.from("imports").delete().eq("id", id)
+    if (error) throw error
+    return true
+  }
+
+  async actualizar(id, datos) {
+    const { data, error } = await this.db
+      .from("imports")
+      .update(datos)
+      .eq("id", id)
+      .select(CAMPOS)
+      .single()
+
+    if (error) throw error
+    return data
+  }
+
+  /** Perfiles de los trabajadores, para mostrar quien cargo cada archivo. */
+  async autores(ids) {
+    if (ids.length === 0) return {}
+
+    const { data, error } = await this.db
+      .from("profiles")
+      .select("id,full_name,email")
+      .in("id", ids)
+
+    if (error) throw error
+
+    const mapa = {}
+    data.forEach((perfil) => {
+      mapa[perfil.id] = perfil.full_name || perfil.email
+    })
+
+    return mapa
+  }
+}
+
+export default ImportModel
