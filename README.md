@@ -262,6 +262,16 @@ negocio hace, no un dato de la venta. Son las que producen el insight principal.
 | Resenas | resena, calificacion, rating |
 | Costo y margen | costo, margen, utilidad, food_cost |
 
+Cada archivo de ejemplo trae capacidades distintas, de modo que cualquier
+comparacion produzca al menos una columna que pedir:
+
+| Archivo | Capacidades que aporta |
+|---|---|
+| `rimberio_ventas_2026.csv` | ninguna. Es el propio: todo le falta |
+| `sabor_norteno_ventas_2026.csv` | delivery, promociones |
+| `la_buena_mesa_ventas_2026.csv` | combos, fidelizacion, resenas |
+| `costa_marina_ventas_2026.csv` | costos, resenas |
+
 Una columna `canal` que solo dice `Salon` no cuenta como delivery, y una columna
 booleana en la que nunca se dice que si tampoco: la capacidad tiene que estar
 efectivamente en uso.
@@ -271,17 +281,21 @@ efectivamente en uso.
 `utils/Insight.js` evalua ocho reglas y devuelve las seis mas relevantes,
 ordenadas por nivel (`oportunidad`, `alerta`, `info`).
 
-| Regla | Situacion que detecta |
-|---|---|
-| Brecha de ingresos | El otro factura 15 por ciento mas, y si es por volumen o por precio |
-| Capacidades faltantes | El otro registra algo que nosotros ni medimos |
-| Peso del canal | Cuanto del ingreso ajeno sale del delivery |
-| Ticket promedio | Diferencia mayor al 10 por ciento, con el impacto en soles |
-| Amplitud de catalogo | El otro mueve 25 por ciento mas productos distintos |
-| Categorias sin cubrir | Categorias que el otro trabaja y nosotros no |
-| Concentracion | Un solo plato pasa el 18 por ciento de nuestro ingreso |
-| Tendencia | Si la brecha se abre o se cierra en el periodo |
+| Regla | Situacion que detecta | Trae accion |
+|---|---|---|
+| Capacidades faltantes | El otro registra algo que nosotros ni medimos | Si |
+| Peso del canal | Cuanto del ingreso ajeno sale del delivery | Si |
+| Brecha de ingresos | El otro factura 15 por ciento mas | No |
+| Ticket promedio | Diferencia mayor al 10 por ciento | No |
+| Amplitud de catalogo | El otro mueve 25 por ciento mas productos | No |
+| Categorias sin cubrir | Categorias que el otro trabaja y nosotros no | No |
+| Concentracion | Un solo plato pasa el 18 por ciento del ingreso | No |
+| Tendencia | Si la brecha se abre o se cierra en el periodo | No |
 
-Las reglas de capacidades faltantes traen una `accion`: el nombre y el tipo de la
-columna que conviene crear. Es lo que enlaza el modulo del administrador con el
-del trabajador.
+**En modo comparacion solo se devuelven las reglas con `accion`.** Un
+diagnostico sin columna que crear no le sirve al administrador, porque no hay
+nada que asignarle a nadie. Las ocho reglas se evaluan igual, pero las que no
+producen una orden concreta se descartan antes de responder.
+
+Al analizar un archivo suelto no hay comparacion posible, asi que ese modo
+conserva sus observaciones informativas y no muestra el boton de asignar.

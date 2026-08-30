@@ -178,7 +178,7 @@ const archivos = {}
 }
 
 // =====================================================================
-// 4. COSTA MARINA - estructura minima, ticket alto
+// 4. COSTA MARINA - ticket alto, controla costos y mide satisfaccion
 // =====================================================================
 {
   const seleccion = muestra({ Entrada: 8, Fondo: 18, Postre: 5, Bebida: 6 })
@@ -188,21 +188,38 @@ const archivos = {}
     const base = perfil[p.categoria]
     const precio = dec(entre(base.precio[0], base.precio[1]) * 1.42)
 
+    // Food cost tipico del rubro: entre el 28 y el 38 por ciento del precio
+    const costo = dec(precio * entre(0.28, 0.38))
+    const calificacion = dec(entre(3.9, 5.0), 1)
+
     MESES.forEach((mes) => {
       const unidades = entero(base.unidades[0] * 0.55, base.unidades[1] * 0.55)
       filas.push({
         nombre_plato: p.nombre,
         seccion: p.categoria,
         precio: precio,
+        costo_unitario: costo,
+        margen_bruto: dec((precio - costo) * unidades),
         vendidos: unidades,
         total: dec(precio * unidades),
+        calificacion_google: calificacion,
         mes
       })
     })
   })
 
   archivos["costa_marina_ventas_2026.csv"] = csv(
-    ["nombre_plato", "seccion", "precio", "vendidos", "total", "mes"],
+    [
+      "nombre_plato",
+      "seccion",
+      "precio",
+      "costo_unitario",
+      "margen_bruto",
+      "vendidos",
+      "total",
+      "calificacion_google",
+      "mes"
+    ],
     filas
   )
 }

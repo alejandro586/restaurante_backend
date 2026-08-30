@@ -32,20 +32,25 @@ class Insight {
       ...this.tendencia(nuestra, otra)
     ]
 
-    if (lista.length === 0) {
+    // Solo sobreviven los hallazgos que se pueden convertir en una orden
+    // concreta. Un diagnostico sin columna ni tabla que crear no le sirve
+    // al administrador, porque no hay nada que asignarle a nadie.
+    const accionables = lista.filter((item) => item.accion)
+
+    if (accionables.length === 0) {
       return [
         {
           nivel: "info",
-          titulo: "Rendimiento equiparable",
+          titulo: "Nada que incorporar",
           mensaje:
-            `${nuestra.empresa} y ${otra.empresa} muestran cifras muy similares en ingresos, ` +
-            `ticket promedio y amplitud de catalogo. No se detectan diferencias estructurales ` +
-            `que expliquen una ventaja de una sobre otra.`
+            `${nuestra.empresa} ya registra todo lo que registra ${otra.empresa}: no se detecta ` +
+            `ninguna capacidad que la competencia mida y nosotros no. Las diferencias que existan ` +
+            `estan en la ejecucion, no en lo que se esta dejando de medir.`
         }
       ]
     }
 
-    return lista.sort((a, b) => PESO[a.nivel] - PESO[b.nivel]).slice(0, 6)
+    return accionables.sort((a, b) => PESO[a.nivel] - PESO[b.nivel]).slice(0, 6)
   }
 
   /** Cuando se elige un solo archivo no hay contra que comparar. */
@@ -191,7 +196,16 @@ class Insight {
           `De los ${soles(otra.ingresos)} que factura ${otra.empresa}, ${soles(ingreso)} salen del canal ` +
           `de reparto. ${nuestra.empresa} vende unicamente en salon, de modo que esa porcion del mercado ` +
           `hoy no se disputa. Aun capturando la mitad de esa proporcion, el ingreso subiria alrededor de ` +
-          `${soles(nuestra.ingresos * (share / 200))}.`
+          `${soles(nuestra.ingresos * (share / 200))}.`,
+        // Lleva accion propia porque esta regla desplaza a la generica de
+        // capacidades para el delivery: sin esto, nadie podria pedir la
+        // columna que hace falta para empezar a medir el canal.
+        accion: {
+          tipo: "agregar_columna",
+          columna: "canal_venta",
+          tipoDato: "texto",
+          ejemplo: "Salon / Delivery / Para llevar"
+        }
       }
     ]
   }
