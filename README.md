@@ -51,13 +51,11 @@ backend/
   routes/
     auth.routes.js             Autenticacion
     import.routes.js           Carga y consulta de archivos
-    empresa.routes.js          Sugerencias para el modulo del trabajador
     comparar.routes.js         Comparacion entre restaurantes
     tarea.routes.js            Asignacion de tareas a los trabajadores
   controllers/
     AuthController.js          Registro, verificacion, login y perfil
     ImportController.js        Lectura del archivo y guardado
-    EmpresaController.js       Sugerencias de columnas a registrar
     CompararController.js      Analisis de uno o dos archivos
     TareaController.js         Alta y seguimiento de tareas
   models/
@@ -133,15 +131,6 @@ nuevas, necesita ser una tabla real con columnas reales.
 | GET | `/api/imports/:id` | ambos | Metadata y filas, para el modal |
 | DELETE | `/api/imports/:id` | ambos | Elimina la importacion y sus filas |
 
-### Empresa (solo trabajador)
-
-| Metodo | Ruta | Descripcion |
-|---|---|---|
-| GET | `/api/empresa/sugerencias` | Columnas que la competencia registra y nosotros no |
-
-Es lo unico que queda de este modulo en el backend. Las operaciones sobre la
-base las ejecuta el navegador, ver la seccion siguiente.
-
 ### Comparacion (solo admin)
 
 | Metodo | Ruta | Descripcion |
@@ -165,6 +154,11 @@ desde su modulo, directo contra la base con RLS.
 Cada insight de la comparacion se puede convertir en una orden concreta para un
 trabajador. El sistema no ejecuta nada por el: la tarea se muestra y el
 trabajador la resuelve a mano con el formulario de siempre.
+
+El trabajo del trabajador viene **unicamente** de estas tareas. No hay
+sugerencias automaticas: si el administrador no lo pidio, no aparece. Antes
+existia un endpoint que proponia columnas por su cuenta, y se elimino porque
+competia con la asignacion y difuminaba quien decide que se hace.
 
 | Tipo de tarea | Origen | Como se cierra |
 |---|---|---|
