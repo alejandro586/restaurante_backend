@@ -1,4 +1,5 @@
 import "dotenv/config"
+
 import express from "express"
 import cors from "cors"
 
@@ -6,34 +7,64 @@ import authRoutes from "./routes/auth.routes.js"
 import importRoutes from "./routes/import.routes.js"
 import compararRoutes from "./routes/comparar.routes.js"
 import tareaRoutes from "./routes/tarea.routes.js"
+
 import projectRoutes from "./routes/project.routes.js"
+import projectTaskRoutes from "./routes/project-task.routes.js"
 
 const app = express()
-const port = process.env.PORT || 4000
 
-const origins = (process.env.CLIENT_URL || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean)
+const port =
+  process.env.PORT || 4000
 
+/**
+ * Permite una o varias URLs
+ * separadas por coma.
+ *
+ * Ejemplo:
+ *
+ * CLIENT_URL=
+ * https://restaurante-rimberio.vercel.app,
+ * http://localhost:5000
+ */
+const origins =
+  (
+    process.env.CLIENT_URL ||
+    ""
+  )
+    .split(",")
+    .map(
+      (origin) =>
+        origin.trim()
+    )
+    .filter(Boolean)
+
+/**
+ * CORS
+ */
 app.use(
   cors({
     origin:
       origins.length > 0
         ? origins
-        : true
+        : true,
+
+    credentials: true
   })
 )
 
+/**
+ * JSON
+ */
 app.use(
   express.json({
     limit: "2mb"
   })
 )
 
-/**
- * Rutas actuales del sistema
- */
+/* ==========================================================
+   RUTAS EXISTENTES
+   ========================================================== */
+
 app.use(
   "/api/auth",
   authRoutes
@@ -54,18 +85,28 @@ app.use(
   tareaRoutes
 )
 
-/**
- * NUEVO:
- * Modulo colaborativo de proyectos.
- */
+/* ==========================================================
+   PROYECTOS
+   ========================================================== */
+
 app.use(
   "/api/projects",
   projectRoutes
 )
 
-/**
- * Estado del servidor.
- */
+/* ==========================================================
+   ACTIVIDADES DE PROYECTOS
+   ========================================================== */
+
+app.use(
+  "/api/projects",
+  projectTaskRoutes
+)
+
+/* ==========================================================
+   HEALTH CHECK
+   ========================================================== */
+
 app.get(
   "/api/health",
   (req, res) => {
@@ -75,9 +116,10 @@ app.get(
   }
 )
 
-/**
- * Ruta inexistente.
- */
+/* ==========================================================
+   404
+   ========================================================== */
+
 app.use(
   (req, res) => {
     res.status(404).json({
@@ -87,9 +129,10 @@ app.use(
   }
 )
 
-/**
- * Manejo general de errores.
- */
+/* ==========================================================
+   MANEJO GENERAL DE ERRORES
+   ========================================================== */
+
 app.use(
   (
     error,
@@ -97,6 +140,15 @@ app.use(
     res,
     next
   ) => {
+    console.error(
+      "Error no controlado:",
+      error
+    )
+
+    /**
+     * Multer:
+     * archivo demasiado grande.
+     */
     if (
       error.code ===
       "LIMIT_FILE_SIZE"
@@ -109,14 +161,23 @@ app.use(
         })
     }
 
-    const status =
+    /**
+     * Formato de archivo incorrecto.
+     */
+    if (
       error.message?.includes(
         "Formato no permitido"
       )
-        ? 400
-        : 500
+    ) {
+      return res
+        .status(400)
+        .json({
+          error:
+            error.message
+        })
+    }
 
-    res.status(status).json({
+    res.status(500).json({
       error:
         error.message ||
         "Error interno del servidor"
@@ -124,11 +185,15 @@ app.use(
   }
 )
 
+/* ==========================================================
+   SERVIDOR
+   ========================================================== */
+
 app.listen(
   port,
   () => {
     console.log(
-      `API disponible en http://localhost:${port}`
+      `API disponible en puerto ${port}`
     )
   }
 )
