@@ -8,15 +8,12 @@ import importRoutes from "./routes/import.routes.js"
 import compararRoutes from "./routes/comparar.routes.js"
 import tareaRoutes from "./routes/tarea.routes.js"
 
+import courseRoutes from "./routes/course.routes.js"
+import adminUserRoutes from "./routes/admin-user.routes.js"
+
 import projectRoutes from "./routes/project.routes.js"
 import projectTaskRoutes from "./routes/project-task.routes.js"
 import projectInvitationRoutes from "./routes/project-invitation.routes.js"
-
-/**
- * NUEVO:
- * Cursos, submodulos y permisos del ERP.
- */
-import courseRoutes from "./routes/course.routes.js"
 
 
 const app = express()
@@ -29,16 +26,6 @@ const port =
    CORS
    ========================================================== */
 
-/**
- * CLIENT_URL puede contener varias URLs
- * separadas por coma.
- *
- * Ejemplo:
- *
- * CLIENT_URL=
- * https://restaurante-rimberio.vercel.app,
- * http://localhost:5000
- */
 const origins =
   (
     process.env.CLIENT_URL ||
@@ -59,9 +46,8 @@ app.use(
       callback
     ) => {
 
-      /**
-       * Permite solicitudes sin origin,
-       * por ejemplo:
+      /*
+       * Permite solicitudes sin origin:
        *
        * - Postman
        * - curl
@@ -75,10 +61,10 @@ app.use(
       }
 
 
-      /**
-       * Si CLIENT_URL todavia no esta
-       * configurado permitimos temporalmente
-       * cualquier origen.
+      /*
+       * Si CLIENT_URL no esta configurado
+       * permitimos temporalmente cualquier
+       * origen.
        */
       if (
         origins.length === 0
@@ -163,7 +149,7 @@ app.use(
 
 
 /* ==========================================================
-   TAREAS EXISTENTES
+   TAREAS
    ========================================================== */
 
 app.use(
@@ -177,26 +163,12 @@ app.use(
    ========================================================== */
 
 /**
- * NUEVA estructura principal de RIMBERIO:
- *
- * /api/courses
- *
  * Ejemplos:
  *
- * GET
- * /api/courses
- *
- * GET
- * /api/courses/me
- *
- * GET
- * /api/courses/big-data
- *
- * GET
- * /api/courses/big-data/modules
- *
- * POST
- * /api/courses/check-permission
+ * GET /api/courses
+ * GET /api/courses/me
+ * GET /api/courses/big-data
+ * GET /api/courses/big-data/modules
  */
 app.use(
   "/api/courses",
@@ -205,15 +177,54 @@ app.use(
 
 
 /* ==========================================================
-   PROYECTOS
+   ADMINISTRACION DE USUARIOS
    ========================================================== */
 
 /**
- * Se conserva.
+ * SOLO ADMINISTRADORES.
  *
- * Mas adelante esta funcionalidad se ubicara
- * dentro del curso correspondiente del ERP.
+ * Las rutas internas estan protegidas
+ * mediante:
+ *
+ * requireAuth
+ * requireAdmin
+ *
+ * Ejemplos:
+ *
+ * GET
+ * /api/admin/users
+ *
+ * GET
+ * /api/admin/users/catalog
+ *
+ * GET
+ * /api/admin/users/:userId
+ *
+ * GET
+ * /api/admin/users/:userId/permissions
+ *
+ * POST
+ * /api/admin/users/:userId/courses/:courseId
+ *
+ * DELETE
+ * /api/admin/users/:userId/courses/:courseId
+ *
+ * POST
+ * /api/admin/users/:userId/modules/:moduleId
+ *
+ * DELETE
+ * /api/admin/users/:userId/modules/:moduleId
  */
+app.use(
+  "/api/admin/users",
+  adminUserRoutes
+)
+
+
+/* ==========================================================
+   PROYECTOS
+   ========================================================== */
+
 app.use(
   "/api/projects",
   projectRoutes
@@ -235,20 +246,15 @@ app.use(
    ========================================================== */
 
 /**
- * Se conserva temporalmente la implementacion
- * actual.
- *
- * Posteriormente cambiaremos las invitaciones
- * para trabajar exclusivamente con usuarios
- * ya registrados dentro de RIMBERIO.
- *
- * project-invitation.routes.js contiene:
+ * project-invitation.routes.js contiene
+ * internamente rutas como:
  *
  * /invitations/:token
  * /projects/:id/invitations
  * /mail/health
  *
- * Por eso se monta sobre /api.
+ * Por eso se monta directamente
+ * sobre /api.
  */
 app.use(
   "/api",
@@ -257,7 +263,7 @@ app.use(
 
 
 /* ==========================================================
-   HEALTH CHECK GENERAL
+   HEALTH CHECK
    ========================================================== */
 
 app.get(
@@ -301,7 +307,7 @@ app.get(
 /**
  * IMPORTANTE:
  *
- * Siempre debe mantenerse despues
+ * Siempre debe permanecer despues
  * de todas las rutas.
  */
 app.use(
@@ -338,9 +344,10 @@ app.use(
     )
 
 
-    /**
-     * Archivo demasiado grande.
-     */
+    /* ----------------------------------------------------------
+       ARCHIVO DEMASIADO GRANDE
+       ---------------------------------------------------------- */
+
     if (
       error.code ===
       "LIMIT_FILE_SIZE"
@@ -355,9 +362,10 @@ app.use(
     }
 
 
-    /**
-     * Formato no permitido.
-     */
+    /* ----------------------------------------------------------
+       FORMATO NO PERMITIDO
+       ---------------------------------------------------------- */
+
     if (
       error.message?.includes(
         "Formato no permitido"
@@ -373,9 +381,10 @@ app.use(
     }
 
 
-    /**
-     * CORS.
-     */
+    /* ----------------------------------------------------------
+       CORS
+       ---------------------------------------------------------- */
+
     if (
       error.message ===
       "Origen no permitido por CORS"
@@ -390,7 +399,11 @@ app.use(
     }
 
 
-    res
+    /* ----------------------------------------------------------
+       ERROR INTERNO
+       ---------------------------------------------------------- */
+
+    return res
       .status(500)
       .json({
         error:
