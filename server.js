@@ -12,6 +12,13 @@ import projectRoutes from "./routes/project.routes.js"
 import projectTaskRoutes from "./routes/project-task.routes.js"
 import projectInvitationRoutes from "./routes/project-invitation.routes.js"
 
+/**
+ * NUEVO:
+ * Cursos, submodulos y permisos del ERP.
+ */
+import courseRoutes from "./routes/course.routes.js"
+
+
 const app = express()
 
 const port =
@@ -44,16 +51,21 @@ const origins =
     )
     .filter(Boolean)
 
+
 app.use(
   cors({
     origin: (
       origin,
       callback
     ) => {
+
       /**
        * Permite solicitudes sin origin,
-       * por ejemplo Postman, curl,
-       * Render health checks, etc.
+       * por ejemplo:
+       *
+       * - Postman
+       * - curl
+       * - Render health checks
        */
       if (!origin) {
         return callback(
@@ -62,10 +74,11 @@ app.use(
         )
       }
 
+
       /**
-       * Si no configuramos CLIENT_URL
-       * permitimos temporalmente cualquier
-       * origen.
+       * Si CLIENT_URL todavia no esta
+       * configurado permitimos temporalmente
+       * cualquier origen.
        */
       if (
         origins.length === 0
@@ -75,6 +88,7 @@ app.use(
           true
         )
       }
+
 
       if (
         origins.includes(
@@ -86,6 +100,7 @@ app.use(
           true
         )
       }
+
 
       return callback(
         new Error(
@@ -109,6 +124,7 @@ app.use(
   })
 )
 
+
 app.use(
   express.urlencoded({
     extended: true
@@ -117,7 +133,7 @@ app.use(
 
 
 /* ==========================================================
-   RUTAS EXISTENTES
+   AUTENTICACION
    ========================================================== */
 
 app.use(
@@ -125,15 +141,30 @@ app.use(
   authRoutes
 )
 
+
+/* ==========================================================
+   BIG DATA - IMPORTACIONES
+   ========================================================== */
+
 app.use(
   "/api/imports",
   importRoutes
 )
 
+
+/* ==========================================================
+   BIG DATA - COMPARACIONES
+   ========================================================== */
+
 app.use(
   "/api/comparar",
   compararRoutes
 )
+
+
+/* ==========================================================
+   TAREAS EXISTENTES
+   ========================================================== */
 
 app.use(
   "/api/tareas",
@@ -142,9 +173,47 @@ app.use(
 
 
 /* ==========================================================
+   CURSOS DEL ERP
+   ========================================================== */
+
+/**
+ * NUEVA estructura principal de RIMBERIO:
+ *
+ * /api/courses
+ *
+ * Ejemplos:
+ *
+ * GET
+ * /api/courses
+ *
+ * GET
+ * /api/courses/me
+ *
+ * GET
+ * /api/courses/big-data
+ *
+ * GET
+ * /api/courses/big-data/modules
+ *
+ * POST
+ * /api/courses/check-permission
+ */
+app.use(
+  "/api/courses",
+  courseRoutes
+)
+
+
+/* ==========================================================
    PROYECTOS
    ========================================================== */
 
+/**
+ * Se conserva.
+ *
+ * Mas adelante esta funcionalidad se ubicara
+ * dentro del curso correspondiente del ERP.
+ */
 app.use(
   "/api/projects",
   projectRoutes
@@ -166,16 +235,20 @@ app.use(
    ========================================================== */
 
 /**
- * IMPORTANTE:
+ * Se conserva temporalmente la implementacion
+ * actual.
  *
- * project-invitation.routes.js ya contiene
- * internamente rutas como:
+ * Posteriormente cambiaremos las invitaciones
+ * para trabajar exclusivamente con usuarios
+ * ya registrados dentro de RIMBERIO.
+ *
+ * project-invitation.routes.js contiene:
  *
  * /invitations/:token
  * /projects/:id/invitations
  * /mail/health
  *
- * Por eso se monta solamente sobre /api.
+ * Por eso se monta sobre /api.
  */
 app.use(
   "/api",
@@ -193,6 +266,7 @@ app.get(
     req,
     res
   ) => {
+
     res.json({
       status: "ok",
       service: "rimberio-api"
@@ -211,6 +285,7 @@ app.get(
     req,
     res
   ) => {
+
     res.json({
       name: "RIMBERIO API",
       status: "online"
@@ -223,11 +298,18 @@ app.get(
    404
    ========================================================== */
 
+/**
+ * IMPORTANTE:
+ *
+ * Siempre debe mantenerse despues
+ * de todas las rutas.
+ */
 app.use(
   (
     req,
     res
   ) => {
+
     res
       .status(404)
       .json({
@@ -249,10 +331,12 @@ app.use(
     res,
     next
   ) => {
+
     console.error(
       "Error no controlado:",
       error
     )
+
 
     /**
      * Archivo demasiado grande.
@@ -261,6 +345,7 @@ app.use(
       error.code ===
       "LIMIT_FILE_SIZE"
     ) {
+
       return res
         .status(400)
         .json({
@@ -268,6 +353,7 @@ app.use(
             "El archivo supera el tamaño permitido"
         })
     }
+
 
     /**
      * Formato no permitido.
@@ -277,6 +363,7 @@ app.use(
         "Formato no permitido"
       )
     ) {
+
       return res
         .status(400)
         .json({
@@ -285,6 +372,7 @@ app.use(
         })
     }
 
+
     /**
      * CORS.
      */
@@ -292,6 +380,7 @@ app.use(
       error.message ===
       "Origen no permitido por CORS"
     ) {
+
       return res
         .status(403)
         .json({
@@ -299,6 +388,7 @@ app.use(
             "Origen no permitido"
         })
     }
+
 
     res
       .status(500)
@@ -321,6 +411,7 @@ app.use(
 app.listen(
   port,
   () => {
+
     console.log(
       `RIMBERIO API disponible en puerto ${port}`
     )
