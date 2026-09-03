@@ -10,14 +10,20 @@ import tareaRoutes from "./routes/tarea.routes.js"
 
 import projectRoutes from "./routes/project.routes.js"
 import projectTaskRoutes from "./routes/project-task.routes.js"
+import projectInvitationRoutes from "./routes/project-invitation.routes.js"
 
 const app = express()
 
 const port =
   process.env.PORT || 4000
 
+
+/* ==========================================================
+   CORS
+   ========================================================== */
+
 /**
- * Permite una o varias URLs
+ * CLIENT_URL puede contener varias URLs
  * separadas por coma.
  *
  * Ejemplo:
@@ -38,28 +44,77 @@ const origins =
     )
     .filter(Boolean)
 
-/**
- * CORS
- */
 app.use(
   cors({
-    origin:
-      origins.length > 0
-        ? origins
-        : true,
+    origin: (
+      origin,
+      callback
+    ) => {
+      /**
+       * Permite solicitudes sin origin,
+       * por ejemplo Postman, curl,
+       * Render health checks, etc.
+       */
+      if (!origin) {
+        return callback(
+          null,
+          true
+        )
+      }
+
+      /**
+       * Si no configuramos CLIENT_URL
+       * permitimos temporalmente cualquier
+       * origen.
+       */
+      if (
+        origins.length === 0
+      ) {
+        return callback(
+          null,
+          true
+        )
+      }
+
+      if (
+        origins.includes(
+          origin
+        )
+      ) {
+        return callback(
+          null,
+          true
+        )
+      }
+
+      return callback(
+        new Error(
+          "Origen no permitido por CORS"
+        )
+      )
+    },
 
     credentials: true
   })
 )
 
-/**
- * JSON
- */
+
+/* ==========================================================
+   BODY
+   ========================================================== */
+
 app.use(
   express.json({
     limit: "2mb"
   })
 )
+
+app.use(
+  express.urlencoded({
+    extended: true
+  })
+)
+
 
 /* ==========================================================
    RUTAS EXISTENTES
@@ -85,6 +140,7 @@ app.use(
   tareaRoutes
 )
 
+
 /* ==========================================================
    PROYECTOS
    ========================================================== */
@@ -93,6 +149,7 @@ app.use(
   "/api/projects",
   projectRoutes
 )
+
 
 /* ==========================================================
    ACTIVIDADES DE PROYECTOS
@@ -103,31 +160,83 @@ app.use(
   projectTaskRoutes
 )
 
+
 /* ==========================================================
-   HEALTH CHECK
+   INVITACIONES
+   ========================================================== */
+
+/**
+ * IMPORTANTE:
+ *
+ * project-invitation.routes.js ya contiene
+ * internamente rutas como:
+ *
+ * /invitations/:token
+ * /projects/:id/invitations
+ * /mail/health
+ *
+ * Por eso se monta solamente sobre /api.
+ */
+app.use(
+  "/api",
+  projectInvitationRoutes
+)
+
+
+/* ==========================================================
+   HEALTH CHECK GENERAL
    ========================================================== */
 
 app.get(
   "/api/health",
-  (req, res) => {
+  (
+    req,
+    res
+  ) => {
     res.json({
-      status: "ok"
+      status: "ok",
+      service: "rimberio-api"
     })
   }
 )
+
+
+/* ==========================================================
+   RUTA PRINCIPAL
+   ========================================================== */
+
+app.get(
+  "/",
+  (
+    req,
+    res
+  ) => {
+    res.json({
+      name: "RIMBERIO API",
+      status: "online"
+    })
+  }
+)
+
 
 /* ==========================================================
    404
    ========================================================== */
 
 app.use(
-  (req, res) => {
-    res.status(404).json({
-      error:
-        "Recurso no encontrado"
-    })
+  (
+    req,
+    res
+  ) => {
+    res
+      .status(404)
+      .json({
+        error:
+          "Recurso no encontrado"
+      })
   }
 )
+
 
 /* ==========================================================
    MANEJO GENERAL DE ERRORES
@@ -146,8 +255,7 @@ app.use(
     )
 
     /**
-     * Multer:
-     * archivo demasiado grande.
+     * Archivo demasiado grande.
      */
     if (
       error.code ===
@@ -157,12 +265,12 @@ app.use(
         .status(400)
         .json({
           error:
-            "El archivo supera los 10 MB permitidos"
+            "El archivo supera el tamaño permitido"
         })
     }
 
     /**
-     * Formato de archivo incorrecto.
+     * Formato no permitido.
      */
     if (
       error.message?.includes(
@@ -177,13 +285,34 @@ app.use(
         })
     }
 
-    res.status(500).json({
-      error:
-        error.message ||
-        "Error interno del servidor"
-    })
+    /**
+     * CORS.
+     */
+    if (
+      error.message ===
+      "Origen no permitido por CORS"
+    ) {
+      return res
+        .status(403)
+        .json({
+          error:
+            "Origen no permitido"
+        })
+    }
+
+    res
+      .status(500)
+      .json({
+        error:
+          process.env.NODE_ENV ===
+          "production"
+            ? "Error interno del servidor"
+            : error.message ||
+              "Error interno del servidor"
+      })
   }
 )
+
 
 /* ==========================================================
    SERVIDOR
@@ -193,7 +322,7 @@ app.listen(
   port,
   () => {
     console.log(
-      `API disponible en puerto ${port}`
+      `RIMBERIO API disponible en puerto ${port}`
     )
   }
 )
