@@ -19,6 +19,312 @@ class UserAdminModel {
 
 
   /* ==========================================================
+   CREAR USUARIO
+   ========================================================== */
+
+/**
+ * Crea una cuenta nueva desde el panel administrativo.
+ *
+ * El administrador define:
+ *
+ * - nombre
+ * - correo
+ * - contraseña temporal
+ * - empresa
+ *
+ * Por ahora el rol interno sigue siendo "trabajador"
+ * para mantener compatibilidad con las rutas antiguas.
+ *
+ * En la interfaz se mostrará simplemente como "Usuario".
+ *
+ * Más adelante migraremos definitivamente:
+ *
+ * trabajador -> usuario
+ */
+async crearUsuario({
+  email,
+  password,
+  fullName,
+  empresa
+}) {
+
+  const correo =
+    String(
+      email || ""
+    )
+      .trim()
+      .toLowerCase()
+
+
+  const nombre =
+    String(
+      fullName || ""
+    ).trim()
+
+
+  const empresaFinal =
+    String(
+      empresa || ""
+    ).trim()
+
+
+  /* ========================================================
+     VALIDACIONES BASICAS
+     ======================================================== */
+
+  if (!correo) {
+    throw new Error(
+      "El correo es obligatorio"
+    )
+  }
+
+
+  if (!password) {
+    throw new Error(
+      "La contraseña es obligatoria"
+    )
+  }
+
+
+  if (
+    String(password).length <
+    8
+  ) {
+    throw new Error(
+      "La contraseña debe tener al menos 8 caracteres"
+    )
+  }
+
+
+  if (!nombre) {
+    throw new Error(
+      "El nombre completo es obligatorio"
+    )
+  }
+
+
+  if (!empresaFinal) {
+    throw new Error(
+      "La empresa es obligatoria"
+    )
+  }
+
+
+  /* ========================================================
+     COMPROBAR SI YA EXISTE EN PROFILES
+     ======================================================== */
+
+  const {
+    data: existente,
+    error: errorExistente
+  } =
+    await this.db
+      .from(
+        "profiles"
+      )
+      .select(
+        "id,email"
+      )
+      .ilike(
+        "email",
+        correo
+      )
+      .maybeSingle()
+
+
+  if (errorExistente) {
+    throw errorExistente
+  }
+
+
+  if (existente) {
+    throw new Error(
+      "Ese correo ya está registrado en RIMBERIO"
+    )
+  }
+
+
+  let nuevoUsuarioId =
+    null
+
+
+  try {
+
+    /* ======================================================
+       CREAR CUENTA EN SUPABASE AUTH
+       ====================================================== */
+
+    const {
+      data: authData,
+      error: authError
+    } =
+      await this.db
+        .auth
+        .admin
+        .createUser({
+
+          email:
+            correo,
+
+          password,
+
+          /*
+           * La cuenta la crea un administrador,
+           * por lo tanto no necesita pasar por
+           * el proceso público de verificación.
+           */
+          email_confirm:
+            true,
+
+          user_metadata: {
+            full_name:
+              nombre
+          }
+
+        })
+
+
+    if (authError) {
+
+      if (
+        authError.message
+          ?.toLowerCase()
+          .includes(
+            "already"
+          )
+      ) {
+        throw new Error(
+          "Ese correo ya está registrado"
+        )
+      }
+
+
+      throw authError
+    }
+
+
+    if (
+      !authData?.user?.id
+    ) {
+      throw new Error(
+        "Supabase no devolvió el usuario creado"
+      )
+    }
+
+
+    nuevoUsuarioId =
+      authData.user.id
+
+
+    /* ======================================================
+       ACTUALIZAR / CREAR PERFIL
+       ====================================================== */
+
+    /*
+     * Supabase puede crear automáticamente
+     * profiles mediante el trigger que ya tiene
+     * el proyecto.
+     *
+     * Usamos UPSERT para que funcione tanto si
+     * el trigger ya lo creó como si todavía no.
+     */
+    const {
+      data: perfil,
+      error: perfilError
+    } =
+      await this.db
+        .from(
+          "profiles"
+        )
+        .upsert(
+          {
+            id:
+              nuevoUsuarioId,
+
+            email:
+              correo,
+
+            full_name:
+              nombre,
+
+            /*
+             * IMPORTANTE:
+             *
+             * Seguimos usando trabajador
+             * internamente mientras existan
+             * funciones antiguas que dependen
+             * de ese rol.
+             */
+            role:
+              "trabajador",
+
+            empresa:
+              empresaFinal
+          },
+          {
+            onConflict:
+              "id"
+          }
+        )
+        .select(
+          "id,email,full_name,role,empresa,created_at"
+        )
+        .single()
+
+
+    if (perfilError) {
+      throw perfilError
+    }
+
+
+    /* ======================================================
+       RESULTADO
+       ====================================================== */
+
+    return perfil
+
+  } catch (error) {
+
+    /* ======================================================
+       ROLLBACK
+       ====================================================== */
+
+    /*
+     * Si Auth se creó correctamente pero falló
+     * profiles, eliminamos la cuenta para evitar
+     * usuarios incompletos.
+     */
+    if (nuevoUsuarioId) {
+
+      try {
+
+        await this.db
+          .auth
+          .admin
+          .deleteUser(
+            nuevoUsuarioId
+          )
+
+      } catch (
+        rollbackError
+      ) {
+
+        console.error(
+          "No se pudo revertir el usuario:",
+          rollbackError
+        )
+
+      }
+
+    }
+
+
+    throw error
+  }
+}
+
+
+  /* ==========================================================
      LISTAR USUARIOS
      ========================================================== */
 

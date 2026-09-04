@@ -1,4 +1,6 @@
-import { Router } from "express"
+import {
+  Router
+} from "express"
 
 import UserAdminController
   from "../controllers/UserAdminController.js"
@@ -9,22 +11,26 @@ import {
 } from "../middlewares/auth.js"
 
 
-const router = Router()
+const router =
+  Router()
 
 
 /* ==========================================================
-   PROTECCION GENERAL
+   SEGURIDAD GENERAL
    ========================================================== */
 
 /**
- * Todas las rutas de este archivo:
+ * Todas las rutas de este archivo requieren:
  *
- * 1. Requieren iniciar sesion.
- * 2. Requieren ser ADMIN.
+ * 1. sesión válida
+ * 2. rol administrador
  *
- * Un usuario normal no puede modificar
- * permisos aunque intente llamar
- * directamente al backend.
+ * Por tanto un usuario normal no puede:
+ *
+ * - registrar usuarios
+ * - consultar todos los usuarios
+ * - modificar cursos
+ * - modificar módulos
  */
 router.use(
   requireAuth,
@@ -33,18 +39,41 @@ router.use(
 
 
 /* ==========================================================
-   CATALOGO COMPLETO DE CURSOS Y MODULOS
+   REGISTRAR USUARIO
    ========================================================== */
 
 /**
- * GET
- * /api/admin/users/catalog
+ * POST /api/admin/users
  *
- * Devuelve todos los cursos disponibles
- * y todos sus submodulos.
+ * Crea:
  *
- * Se usa para construir la pantalla
- * de asignacion de permisos.
+ * - cuenta en Supabase Auth
+ * - registro en profiles
+ *
+ * Body:
+ *
+ * {
+ *   "full_name": "Juan Perez",
+ *   "email": "juan@correo.com",
+ *   "password": "Temporal123",
+ *   "empresa": "Mi Restaurante"
+ * }
+ */
+router.post(
+  "/",
+  UserAdminController.crearUsuario
+)
+
+
+/* ==========================================================
+   CATALOGO DE CURSOS Y MODULOS
+   ========================================================== */
+
+/**
+ * GET /api/admin/users/catalog
+ *
+ * Devuelve los cursos y módulos disponibles
+ * para poder asignarlos a los usuarios.
  */
 router.get(
   "/catalog",
@@ -57,11 +86,9 @@ router.get(
    ========================================================== */
 
 /**
- * GET
- * /api/admin/users
+ * GET /api/admin/users
  *
- * Lista los usuarios registrados
- * en RIMBERIO.
+ * Lista los usuarios registrados en RIMBERIO.
  */
 router.get(
   "/",
@@ -74,17 +101,12 @@ router.get(
    ========================================================== */
 
 /**
- * GET
- * /api/admin/users/:userId/permissions
+ * GET /api/admin/users/:userId/permissions
  *
- * Ejemplo:
+ * Devuelve:
  *
- * /api/admin/users/
- * 550e8400-e29b-41d4-a716-446655440000/
- * permissions
- *
- * Devuelve los cursos y submodulos
- * actualmente asignados al usuario.
+ * - cursos asignados
+ * - módulos asignados
  */
 router.get(
   "/:userId/permissions",
@@ -99,13 +121,6 @@ router.get(
 /**
  * POST
  * /api/admin/users/:userId/courses/:courseId
- *
- * Ejemplo:
- *
- * POST
- * /api/admin/users/UUID/courses/1
- *
- * Habilita Big Data para ese usuario.
  */
 router.post(
   "/:userId/courses/:courseId",
@@ -121,8 +136,8 @@ router.post(
  * DELETE
  * /api/admin/users/:userId/courses/:courseId
  *
- * Al quitar el curso tambien se
- * desactivan sus submodulos.
+ * Al retirar un curso también se desactivan
+ * sus módulos para ese usuario.
  */
 router.delete(
   "/:userId/courses/:courseId",
@@ -131,21 +146,16 @@ router.delete(
 
 
 /* ==========================================================
-   ASIGNAR SUBMODULO
+   ASIGNAR MODULO
    ========================================================== */
 
 /**
  * POST
  * /api/admin/users/:userId/modules/:moduleId
  *
- * Ejemplo:
- *
- * POST
- * /api/admin/users/UUID/modules/6
- *
- * Si el usuario todavia no tiene
- * el curso correspondiente, el modelo
- * lo asigna automaticamente.
+ * Si el usuario todavía no tiene asignado
+ * el curso padre, el modelo lo asigna
+ * automáticamente.
  */
 router.post(
   "/:userId/modules/:moduleId",
@@ -154,7 +164,7 @@ router.post(
 
 
 /* ==========================================================
-   QUITAR SUBMODULO
+   QUITAR MODULO
    ========================================================== */
 
 /**
@@ -174,11 +184,15 @@ router.delete(
 /**
  * IMPORTANTE:
  *
- * Esta ruta queda al final porque
- * "/:userId" es una ruta dinamica.
+ * Esta ruta debe quedar al final porque:
  *
- * GET
- * /api/admin/users/:userId
+ * /catalog
+ * /:userId/permissions
+ * /:userId/courses/...
+ *
+ * son rutas más específicas.
+ *
+ * GET /api/admin/users/:userId
  */
 router.get(
   "/:userId",
