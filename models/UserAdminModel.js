@@ -2,7 +2,7 @@ import { adminClient } from "../config/supabase.js"
 
 
 const PROFILE_FIELDS =
-  "id,email,full_name,role,empresa,created_at"
+  "id,email,full_name,role,empresa,activo,created_at"
 
 const CURSO_FIELDS =
   "id,nombre,slug,descripcion,orden,activo"
@@ -19,309 +19,316 @@ class UserAdminModel {
 
 
   /* ==========================================================
-   CREAR USUARIO
-   ========================================================== */
+     CREAR USUARIO
+     ========================================================== */
 
-/**
- * Crea una cuenta nueva desde el panel administrativo.
- *
- * El administrador define:
- *
- * - nombre
- * - correo
- * - contraseña temporal
- * - empresa
- *
- * Por ahora el rol interno sigue siendo "trabajador"
- * para mantener compatibilidad con las rutas antiguas.
- *
- * En la interfaz se mostrará simplemente como "Usuario".
- *
- * Más adelante migraremos definitivamente:
- *
- * trabajador -> usuario
- */
-async crearUsuario({
-  email,
-  password,
-  fullName,
-  empresa
-}) {
+  /**
+   * Crea una cuenta nueva desde el panel administrativo.
+   *
+   * El administrador define:
+   *
+   * - nombre
+   * - correo
+   * - contraseña temporal
+   * - empresa
+   *
+   * Por ahora el rol interno sigue siendo "trabajador"
+   * para mantener compatibilidad con las rutas antiguas.
+   *
+   * En la interfaz se mostrará simplemente como "Usuario".
+   *
+   * Más adelante migraremos definitivamente:
+   *
+   * trabajador -> usuario
+   */
+  async crearUsuario({
+    email,
+    password,
+    fullName,
+    empresa
+  }) {
 
-  const correo =
-    String(
-      email || ""
-    )
-      .trim()
-      .toLowerCase()
-
-
-  const nombre =
-    String(
-      fullName || ""
-    ).trim()
-
-
-  const empresaFinal =
-    String(
-      empresa || ""
-    ).trim()
-
-
-  /* ========================================================
-     VALIDACIONES BASICAS
-     ======================================================== */
-
-  if (!correo) {
-    throw new Error(
-      "El correo es obligatorio"
-    )
-  }
-
-
-  if (!password) {
-    throw new Error(
-      "La contraseña es obligatoria"
-    )
-  }
-
-
-  if (
-    String(password).length <
-    8
-  ) {
-    throw new Error(
-      "La contraseña debe tener al menos 8 caracteres"
-    )
-  }
-
-
-  if (!nombre) {
-    throw new Error(
-      "El nombre completo es obligatorio"
-    )
-  }
-
-
-  if (!empresaFinal) {
-    throw new Error(
-      "La empresa es obligatoria"
-    )
-  }
-
-
-  /* ========================================================
-     COMPROBAR SI YA EXISTE EN PROFILES
-     ======================================================== */
-
-  const {
-    data: existente,
-    error: errorExistente
-  } =
-    await this.db
-      .from(
-        "profiles"
+    const correo =
+      String(
+        email || ""
       )
-      .select(
-        "id,email"
+        .trim()
+        .toLowerCase()
+
+
+    const nombre =
+      String(
+        fullName || ""
+      ).trim()
+
+
+    const empresaFinal =
+      String(
+        empresa || ""
+      ).trim()
+
+
+    /* ========================================================
+       VALIDACIONES BASICAS
+       ======================================================== */
+
+    if (!correo) {
+      throw new Error(
+        "El correo es obligatorio"
       )
-      .ilike(
-        "email",
-        correo
+    }
+
+
+    if (!password) {
+      throw new Error(
+        "La contraseña es obligatoria"
       )
-      .maybeSingle()
-
-
-  if (errorExistente) {
-    throw errorExistente
-  }
-
-
-  if (existente) {
-    throw new Error(
-      "Ese correo ya está registrado en RIMBERIO"
-    )
-  }
-
-
-  let nuevoUsuarioId =
-    null
-
-
-  try {
-
-    /* ======================================================
-       CREAR CUENTA EN SUPABASE AUTH
-       ====================================================== */
-
-    const {
-      data: authData,
-      error: authError
-    } =
-      await this.db
-        .auth
-        .admin
-        .createUser({
-
-          email:
-            correo,
-
-          password,
-
-          /*
-           * La cuenta la crea un administrador,
-           * por lo tanto no necesita pasar por
-           * el proceso público de verificación.
-           */
-          email_confirm:
-            true,
-
-          user_metadata: {
-            full_name:
-              nombre
-          }
-
-        })
-
-
-    if (authError) {
-
-      if (
-        authError.message
-          ?.toLowerCase()
-          .includes(
-            "already"
-          )
-      ) {
-        throw new Error(
-          "Ese correo ya está registrado"
-        )
-      }
-
-
-      throw authError
     }
 
 
     if (
-      !authData?.user?.id
+      String(password).length <
+      8
     ) {
       throw new Error(
-        "Supabase no devolvió el usuario creado"
+        "La contraseña debe tener al menos 8 caracteres"
       )
     }
 
 
-    nuevoUsuarioId =
-      authData.user.id
+    if (!nombre) {
+      throw new Error(
+        "El nombre completo es obligatorio"
+      )
+    }
 
 
-    /* ======================================================
-       ACTUALIZAR / CREAR PERFIL
-       ====================================================== */
+    if (!empresaFinal) {
+      throw new Error(
+        "La empresa es obligatoria"
+      )
+    }
 
-    /*
-     * Supabase puede crear automáticamente
-     * profiles mediante el trigger que ya tiene
-     * el proyecto.
-     *
-     * Usamos UPSERT para que funcione tanto si
-     * el trigger ya lo creó como si todavía no.
-     */
+
+    /* ========================================================
+       COMPROBAR SI YA EXISTE EN PROFILES
+       ======================================================== */
+
     const {
-      data: perfil,
-      error: perfilError
+      data: existente,
+      error: errorExistente
     } =
       await this.db
         .from(
           "profiles"
         )
-        .upsert(
-          {
-            id:
-              nuevoUsuarioId,
+        .select(
+          "id,email"
+        )
+        .ilike(
+          "email",
+          correo
+        )
+        .maybeSingle()
+
+
+    if (errorExistente) {
+      throw errorExistente
+    }
+
+
+    if (existente) {
+      throw new Error(
+        "Ese correo ya está registrado en RIMBERIO"
+      )
+    }
+
+
+    let nuevoUsuarioId =
+      null
+
+
+    try {
+
+      /* ======================================================
+         CREAR CUENTA EN SUPABASE AUTH
+         ====================================================== */
+
+      const {
+        data: authData,
+        error: authError
+      } =
+        await this.db
+          .auth
+          .admin
+          .createUser({
 
             email:
               correo,
 
-            full_name:
-              nombre,
+            password,
 
             /*
-             * IMPORTANTE:
-             *
-             * Seguimos usando trabajador
-             * internamente mientras existan
-             * funciones antiguas que dependen
-             * de ese rol.
+             * La cuenta la crea un administrador,
+             * por lo tanto no necesita pasar por
+             * el proceso público de verificación.
              */
-            role:
-              "trabajador",
+            email_confirm:
+              true,
 
-            empresa:
-              empresaFinal
-          },
-          {
-            onConflict:
-              "id"
-          }
+            user_metadata: {
+              full_name:
+                nombre
+            }
+
+          })
+
+
+      if (authError) {
+
+        if (
+          authError.message
+            ?.toLowerCase()
+            .includes(
+              "already"
+            )
+        ) {
+          throw new Error(
+            "Ese correo ya está registrado"
+          )
+        }
+
+
+        throw authError
+      }
+
+
+      if (
+        !authData?.user?.id
+      ) {
+        throw new Error(
+          "Supabase no devolvió el usuario creado"
         )
-        .select(
-          "id,email,full_name,role,empresa,created_at"
-        )
-        .single()
+      }
 
 
-    if (perfilError) {
-      throw perfilError
-    }
+      nuevoUsuarioId =
+        authData.user.id
 
 
-    /* ======================================================
-       RESULTADO
-       ====================================================== */
+      /* ======================================================
+         ACTUALIZAR / CREAR PERFIL
+         ====================================================== */
 
-    return perfil
-
-  } catch (error) {
-
-    /* ======================================================
-       ROLLBACK
-       ====================================================== */
-
-    /*
-     * Si Auth se creó correctamente pero falló
-     * profiles, eliminamos la cuenta para evitar
-     * usuarios incompletos.
-     */
-    if (nuevoUsuarioId) {
-
-      try {
-
+      /*
+       * Supabase puede crear automáticamente
+       * profiles mediante el trigger que ya tiene
+       * el proyecto.
+       *
+       * Usamos UPSERT para que funcione tanto si
+       * el trigger ya lo creó como si todavía no.
+       */
+      const {
+        data: perfil,
+        error: perfilError
+      } =
         await this.db
-          .auth
-          .admin
-          .deleteUser(
-            nuevoUsuarioId
+          .from(
+            "profiles"
+          )
+          .upsert(
+            {
+              id:
+                nuevoUsuarioId,
+
+              email:
+                correo,
+
+              full_name:
+                nombre,
+
+              /*
+               * IMPORTANTE:
+               *
+               * Seguimos usando trabajador
+               * internamente mientras existan
+               * funciones antiguas que dependen
+               * de ese rol.
+               */
+              role:
+                "trabajador",
+
+              empresa:
+                empresaFinal,
+
+              /*
+               * Todo usuario creado desde
+               * Administración empieza activo.
+               */
+              activo:
+                true
+            },
+            {
+              onConflict:
+                "id"
+            }
+          )
+          .select(
+            PROFILE_FIELDS
+          )
+          .single()
+
+
+      if (perfilError) {
+        throw perfilError
+      }
+
+
+      /* ======================================================
+         RESULTADO
+         ====================================================== */
+
+      return perfil
+
+    } catch (error) {
+
+      /* ======================================================
+         ROLLBACK
+         ====================================================== */
+
+      /*
+       * Si Auth se creó correctamente pero falló
+       * profiles, eliminamos la cuenta para evitar
+       * usuarios incompletos.
+       */
+      if (nuevoUsuarioId) {
+
+        try {
+
+          await this.db
+            .auth
+            .admin
+            .deleteUser(
+              nuevoUsuarioId
+            )
+
+        } catch (
+          rollbackError
+        ) {
+
+          console.error(
+            "No se pudo revertir el usuario:",
+            rollbackError
           )
 
-      } catch (
-        rollbackError
-      ) {
-
-        console.error(
-          "No se pudo revertir el usuario:",
-          rollbackError
-        )
+        }
 
       }
 
+
+      throw error
     }
-
-
-    throw error
   }
-}
 
 
   /* ==========================================================
@@ -329,14 +336,30 @@ async crearUsuario({
      ========================================================== */
 
   async listarUsuarios() {
-    const { data, error } = await this.db
-      .from("profiles")
-      .select(PROFILE_FIELDS)
-      .order("created_at", {
-        ascending: false
-      })
+    const {
+      data,
+      error
+    } =
+      await this.db
+        .from(
+          "profiles"
+        )
+        .select(
+          PROFILE_FIELDS
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false
+          }
+        )
 
-    if (error) throw error
+
+    if (error) {
+      throw error
+    }
+
 
     return data || []
   }
@@ -346,18 +369,26 @@ async crearUsuario({
      OBTENER USUARIO
      ========================================================== */
 
-  async obtenerUsuario(userId) {
+  async obtenerUsuario(
+    userId
+  ) {
     const perfil =
-      await this.buscarPerfil(userId)
+      await this.buscarPerfil(
+        userId
+      )
+
 
     if (!perfil) {
       return null
     }
 
+
     const permisos =
-      await this.obtenerPermisosUsuario(
-        userId
-      )
+      await this
+        .obtenerPermisosUsuario(
+          userId
+        )
+
 
     return {
       ...perfil,
@@ -367,93 +398,320 @@ async crearUsuario({
 
 
   /* ==========================================================
+     CAMBIAR ESTADO DEL USUARIO
+     ========================================================== */
+
+  /**
+   * Activa o desactiva un usuario.
+   *
+   * IMPORTANTE:
+   *
+   * Esta función NO elimina:
+   *
+   * - la cuenta de Supabase Auth
+   * - cursos
+   * - permisos
+   * - CSV
+   * - datos
+   * - proyectos
+   * - historial
+   *
+   * Solamente modifica:
+   *
+   * profiles.activo
+   *
+   * true  = puede utilizar RIMBERIO
+   * false = el backend bloquea su acceso
+   *
+   * Los administradores no pueden ser
+   * desactivados mediante esta función.
+   */
+  async cambiarEstadoUsuario(
+    userId,
+    activo
+  ) {
+
+    /* ========================================================
+       VALIDAR ESTADO
+       ======================================================== */
+
+    if (
+      typeof activo !==
+      "boolean"
+    ) {
+      return {
+        tipo:
+          "invalid_state"
+      }
+    }
+
+
+    /* ========================================================
+       BUSCAR USUARIO
+       ======================================================== */
+
+    const perfil =
+      await this.buscarPerfil(
+        userId
+      )
+
+
+    if (!perfil) {
+      return {
+        tipo:
+          "user_not_found"
+      }
+    }
+
+
+    /* ========================================================
+       PROTEGER ADMINISTRADORES
+       ======================================================== */
+
+    if (
+      perfil.role ===
+      "admin"
+    ) {
+      return {
+        tipo:
+          "admin_not_allowed"
+      }
+    }
+
+
+    /* ========================================================
+       ACTUALIZAR ESTADO
+       ======================================================== */
+
+    const {
+      data,
+      error
+    } =
+      await this.db
+        .from(
+          "profiles"
+        )
+        .update({
+          activo
+        })
+        .eq(
+          "id",
+          userId
+        )
+        .select(
+          PROFILE_FIELDS
+        )
+        .single()
+
+
+    if (error) {
+      throw error
+    }
+
+
+    /* ========================================================
+       RESULTADO
+       ======================================================== */
+
+    return {
+      tipo:
+        "ok",
+
+      usuario:
+        data
+    }
+  }
+
+
+  /* ==========================================================
      PERMISOS COMPLETOS DE UN USUARIO
      ========================================================== */
 
-  async obtenerPermisosUsuario(userId) {
+  async obtenerPermisosUsuario(
+    userId
+  ) {
     const perfil =
-      await this.buscarPerfil(userId)
+      await this.buscarPerfil(
+        userId
+      )
+
 
     if (!perfil) {
       return null
     }
 
 
-    const { data: cursosAsignados, error: cursosError } =
+    const {
+      data:
+        cursosAsignados,
+      error:
+        cursosError
+    } =
       await this.db
-        .from("usuario_cursos")
+        .from(
+          "usuario_cursos"
+        )
         .select(
           "id,user_id,curso_id,activo,asignado_por,created_at,updated_at"
         )
-        .eq("user_id", userId)
-        .eq("activo", true)
+        .eq(
+          "user_id",
+          userId
+        )
+        .eq(
+          "activo",
+          true
+        )
 
-    if (cursosError) throw cursosError
+
+    if (cursosError) {
+      throw cursosError
+    }
 
 
-    const { data: modulosAsignados, error: modulosError } =
+    const {
+      data:
+        modulosAsignados,
+      error:
+        modulosError
+    } =
       await this.db
-        .from("usuario_modulos")
+        .from(
+          "usuario_modulos"
+        )
         .select(
           "id,user_id,modulo_id,activo,asignado_por,created_at,updated_at"
         )
-        .eq("user_id", userId)
-        .eq("activo", true)
-
-    if (modulosError) throw modulosError
-
-
-    const cursoIds = [
-      ...new Set(
-        (cursosAsignados || [])
-          .map((item) => item.curso_id)
-          .filter(Boolean)
-      )
-    ]
+        .eq(
+          "user_id",
+          userId
+        )
+        .eq(
+          "activo",
+          true
+        )
 
 
-    const moduloIds = [
-      ...new Set(
-        (modulosAsignados || [])
-          .map((item) => item.modulo_id)
-          .filter(Boolean)
-      )
-    ]
+    if (modulosError) {
+      throw modulosError
+    }
+
+
+    const cursoIds =
+      [
+        ...new Set(
+          (
+            cursosAsignados ||
+            []
+          )
+            .map(
+              (item) =>
+                item.curso_id
+            )
+            .filter(
+              Boolean
+            )
+        )
+      ]
+
+
+    const moduloIds =
+      [
+        ...new Set(
+          (
+            modulosAsignados ||
+            []
+          )
+            .map(
+              (item) =>
+                item.modulo_id
+            )
+            .filter(
+              Boolean
+            )
+        )
+      ]
 
 
     let cursos = []
 
-    if (cursoIds.length > 0) {
-      const { data, error } =
+
+    if (
+      cursoIds.length >
+      0
+    ) {
+      const {
+        data,
+        error
+      } =
         await this.db
-          .from("cursos")
-          .select(CURSO_FIELDS)
-          .in("id", cursoIds)
-          .order("orden", {
-            ascending: true
-          })
+          .from(
+            "cursos"
+          )
+          .select(
+            CURSO_FIELDS
+          )
+          .in(
+            "id",
+            cursoIds
+          )
+          .order(
+            "orden",
+            {
+              ascending:
+                true
+            }
+          )
 
-      if (error) throw error
 
-      cursos = data || []
+      if (error) {
+        throw error
+      }
+
+
+      cursos =
+        data || []
     }
 
 
     let modulos = []
 
-    if (moduloIds.length > 0) {
-      const { data, error } =
+
+    if (
+      moduloIds.length >
+      0
+    ) {
+      const {
+        data,
+        error
+      } =
         await this.db
-          .from("curso_modulos")
-          .select(MODULO_FIELDS)
-          .in("id", moduloIds)
-          .order("orden", {
-            ascending: true
-          })
+          .from(
+            "curso_modulos"
+          )
+          .select(
+            MODULO_FIELDS
+          )
+          .in(
+            "id",
+            moduloIds
+          )
+          .order(
+            "orden",
+            {
+              ascending:
+                true
+            }
+          )
 
-      if (error) throw error
 
-      modulos = data || []
+      if (error) {
+        throw error
+      }
+
+
+      modulos =
+        data || []
     }
 
 
@@ -461,21 +719,33 @@ async crearUsuario({
       new Map()
 
 
-    for (const modulo of modulos) {
+    for (
+      const modulo
+      of modulos
+    ) {
+
       if (
-        !modulosPorCurso.has(
-          modulo.curso_id
-        )
+        !modulosPorCurso
+          .has(
+            modulo.curso_id
+          )
       ) {
-        modulosPorCurso.set(
-          modulo.curso_id,
-          []
-        )
+
+        modulosPorCurso
+          .set(
+            modulo.curso_id,
+            []
+          )
       }
 
+
       modulosPorCurso
-        .get(modulo.curso_id)
-        .push(modulo)
+        .get(
+          modulo.curso_id
+        )
+        .push(
+          modulo
+        )
     }
 
 
@@ -512,53 +782,104 @@ async crearUsuario({
    * aun no tiene asignados.
    */
   async obtenerCatalogo() {
-    const { data: cursos, error: cursosError } =
+
+    const {
+      data:
+        cursos,
+      error:
+        cursosError
+    } =
       await this.db
-        .from("cursos")
-        .select(CURSO_FIELDS)
-        .eq("activo", true)
-        .order("orden", {
-          ascending: true
-        })
+        .from(
+          "cursos"
+        )
+        .select(
+          CURSO_FIELDS
+        )
+        .eq(
+          "activo",
+          true
+        )
+        .order(
+          "orden",
+          {
+            ascending:
+              true
+          }
+        )
 
-    if (cursosError) throw cursosError
+
+    if (cursosError) {
+      throw cursosError
+    }
 
 
-    const { data: modulos, error: modulosError } =
+    const {
+      data:
+        modulos,
+      error:
+        modulosError
+    } =
       await this.db
-        .from("curso_modulos")
-        .select(MODULO_FIELDS)
-        .eq("activo", true)
-        .order("orden", {
-          ascending: true
-        })
+        .from(
+          "curso_modulos"
+        )
+        .select(
+          MODULO_FIELDS
+        )
+        .eq(
+          "activo",
+          true
+        )
+        .order(
+          "orden",
+          {
+            ascending:
+              true
+          }
+        )
 
-    if (modulosError) throw modulosError
+
+    if (modulosError) {
+      throw modulosError
+    }
 
 
     const porCurso =
       new Map()
 
 
-    for (const modulo of modulos || []) {
+    for (
+      const modulo
+      of modulos || []
+    ) {
+
       if (
         !porCurso.has(
           modulo.curso_id
         )
       ) {
+
         porCurso.set(
           modulo.curso_id,
           []
         )
       }
 
+
       porCurso
-        .get(modulo.curso_id)
-        .push(modulo)
+        .get(
+          modulo.curso_id
+        )
+        .push(
+          modulo
+        )
     }
 
 
-    return (cursos || []).map(
+    return (
+      cursos || []
+    ).map(
       (curso) => ({
         ...curso,
 
@@ -580,7 +901,10 @@ async crearUsuario({
     cursoId
   ) {
     const perfil =
-      await this.buscarPerfil(userId)
+      await this.buscarPerfil(
+        userId
+      )
+
 
     if (!perfil) {
       return {
@@ -591,7 +915,10 @@ async crearUsuario({
 
 
     const curso =
-      await this.buscarCurso(cursoId)
+      await this.buscarCurso(
+        cursoId
+      )
+
 
     if (!curso) {
       return {
@@ -601,23 +928,49 @@ async crearUsuario({
     }
 
 
-    const { data: existente, error: buscarError } =
+    const {
+      data:
+        existente,
+      error:
+        buscarError
+    } =
       await this.db
-        .from("usuario_cursos")
-        .select("id,activo")
-        .eq("user_id", userId)
-        .eq("curso_id", cursoId)
+        .from(
+          "usuario_cursos"
+        )
+        .select(
+          "id,activo"
+        )
+        .eq(
+          "user_id",
+          userId
+        )
+        .eq(
+          "curso_id",
+          cursoId
+        )
         .maybeSingle()
 
-    if (buscarError) throw buscarError
+
+    if (buscarError) {
+      throw buscarError
+    }
 
 
     if (existente) {
-      const { data, error } =
+
+      const {
+        data,
+        error
+      } =
         await this.db
-          .from("usuario_cursos")
+          .from(
+            "usuario_cursos"
+          )
           .update({
-            activo: true,
+            activo:
+              true,
+
             asignado_por:
               this.adminUser.id
           })
@@ -628,18 +981,30 @@ async crearUsuario({
           .select()
           .single()
 
-      if (error) throw error
+
+      if (error) {
+        throw error
+      }
+
 
       return {
-        tipo: "ok",
-        asignacion: data
+        tipo:
+          "ok",
+
+        asignacion:
+          data
       }
     }
 
 
-    const { data, error } =
+    const {
+      data,
+      error
+    } =
       await this.db
-        .from("usuario_cursos")
+        .from(
+          "usuario_cursos"
+        )
         .insert({
           user_id:
             userId,
@@ -657,12 +1022,17 @@ async crearUsuario({
         .single()
 
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
 
     return {
-      tipo: "ok",
-      asignacion: data
+      tipo:
+        "ok",
+
+      asignacion:
+        data
     }
   }
 
@@ -680,7 +1050,10 @@ async crearUsuario({
     cursoId
   ) {
     const perfil =
-      await this.buscarPerfil(userId)
+      await this.buscarPerfil(
+        userId
+      )
+
 
     if (!perfil) {
       return {
@@ -691,7 +1064,10 @@ async crearUsuario({
 
 
     const curso =
-      await this.buscarCurso(cursoId)
+      await this.buscarCurso(
+        cursoId
+      )
+
 
     if (!curso) {
       return {
@@ -701,11 +1077,16 @@ async crearUsuario({
     }
 
 
-    const { error } =
+    const {
+      error
+    } =
       await this.db
-        .from("usuario_cursos")
+        .from(
+          "usuario_cursos"
+        )
         .update({
-          activo: false
+          activo:
+            false
         })
         .eq(
           "user_id",
@@ -717,7 +1098,9 @@ async crearUsuario({
         )
 
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
 
     /*
@@ -725,12 +1108,18 @@ async crearUsuario({
      * pertenecientes al curso.
      */
     const {
-      data: modulos,
-      error: modulosError
+      data:
+        modulos,
+      error:
+        modulosError
     } =
       await this.db
-        .from("curso_modulos")
-        .select("id")
+        .from(
+          "curso_modulos"
+        )
+        .select(
+          "id"
+        )
         .eq(
           "curso_id",
           cursoId
@@ -743,15 +1132,19 @@ async crearUsuario({
 
 
     const moduloIds =
-      (modulos || [])
-        .map(
-          (item) => item.id
-        )
+      (
+        modulos || []
+      ).map(
+        (item) =>
+          item.id
+      )
 
 
     if (
-      moduloIds.length > 0
+      moduloIds.length >
+      0
     ) {
+
       const {
         error:
           permisosError
@@ -761,7 +1154,8 @@ async crearUsuario({
             "usuario_modulos"
           )
           .update({
-            activo: false
+            activo:
+              false
           })
           .eq(
             "user_id",
@@ -780,7 +1174,8 @@ async crearUsuario({
 
 
     return {
-      tipo: "ok"
+      tipo:
+        "ok"
     }
   }
 
@@ -797,6 +1192,7 @@ async crearUsuario({
       await this.buscarPerfil(
         userId
       )
+
 
     if (!perfil) {
       return {
@@ -841,12 +1237,19 @@ async crearUsuario({
     }
 
 
-    const { data: existente, error: buscarError } =
+    const {
+      data:
+        existente,
+      error:
+        buscarError
+    } =
       await this.db
         .from(
           "usuario_modulos"
         )
-        .select("id,activo")
+        .select(
+          "id,activo"
+        )
         .eq(
           "user_id",
           userId
@@ -864,6 +1267,7 @@ async crearUsuario({
 
 
     if (existente) {
+
       const {
         data,
         error
@@ -873,7 +1277,9 @@ async crearUsuario({
             "usuario_modulos"
           )
           .update({
-            activo: true,
+            activo:
+              true,
+
             asignado_por:
               this.adminUser.id
           })
@@ -885,12 +1291,17 @@ async crearUsuario({
           .single()
 
 
-      if (error) throw error
+      if (error) {
+        throw error
+      }
 
 
       return {
-        tipo: "ok",
-        asignacion: data
+        tipo:
+          "ok",
+
+        asignacion:
+          data
       }
     }
 
@@ -920,12 +1331,17 @@ async crearUsuario({
         .single()
 
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
 
     return {
-      tipo: "ok",
-      asignacion: data
+      tipo:
+        "ok",
+
+      asignacion:
+        data
     }
   }
 
@@ -966,13 +1382,16 @@ async crearUsuario({
     }
 
 
-    const { error } =
+    const {
+      error
+    } =
       await this.db
         .from(
           "usuario_modulos"
         )
         .update({
-          activo: false
+          activo:
+            false
         })
         .eq(
           "user_id",
@@ -984,11 +1403,14 @@ async crearUsuario({
         )
 
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
 
     return {
-      tipo: "ok"
+      tipo:
+        "ok"
     }
   }
 
@@ -997,11 +1419,20 @@ async crearUsuario({
      BUSCAR PERFIL
      ========================================================== */
 
-  async buscarPerfil(userId) {
-    const { data, error } =
+  async buscarPerfil(
+    userId
+  ) {
+    const {
+      data,
+      error
+    } =
       await this.db
-        .from("profiles")
-        .select(PROFILE_FIELDS)
+        .from(
+          "profiles"
+        )
+        .select(
+          PROFILE_FIELDS
+        )
         .eq(
           "id",
           userId
@@ -1009,7 +1440,9 @@ async crearUsuario({
         .maybeSingle()
 
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
 
     return data
@@ -1020,11 +1453,20 @@ async crearUsuario({
      BUSCAR CURSO
      ========================================================== */
 
-  async buscarCurso(cursoId) {
-    const { data, error } =
+  async buscarCurso(
+    cursoId
+  ) {
+    const {
+      data,
+      error
+    } =
       await this.db
-        .from("cursos")
-        .select(CURSO_FIELDS)
+        .from(
+          "cursos"
+        )
+        .select(
+          CURSO_FIELDS
+        )
         .eq(
           "id",
           cursoId
@@ -1036,7 +1478,9 @@ async crearUsuario({
         .maybeSingle()
 
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
 
     return data
@@ -1050,7 +1494,10 @@ async crearUsuario({
   async buscarModulo(
     moduloId
   ) {
-    const { data, error } =
+    const {
+      data,
+      error
+    } =
       await this.db
         .from(
           "curso_modulos"
@@ -1069,7 +1516,9 @@ async crearUsuario({
         .maybeSingle()
 
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
 
     return data

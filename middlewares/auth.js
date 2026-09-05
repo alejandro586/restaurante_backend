@@ -100,7 +100,7 @@ export const requireAuth =
             "profiles"
           )
           .select(
-            "id,email,full_name,role,empresa"
+            "id,email,full_name,role,empresa,activo"
           )
           .eq(
             "id",
@@ -121,6 +121,27 @@ export const requireAuth =
           })
       }
 
+
+      /* ====================================================
+         USUARIO ACTIVO / DESACTIVADO
+         ==================================================== */
+
+      if (
+        perfil.activo ===
+        false
+      ) {
+        return res
+          .status(403)
+          .json({
+            error:
+              "Tu cuenta está desactivada. Contacta con un administrador."
+          })
+      }
+
+
+      /* ====================================================
+         SESION VALIDA
+         ==================================================== */
 
       req.token =
         token

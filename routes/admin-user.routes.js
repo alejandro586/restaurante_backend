@@ -29,6 +29,7 @@ const router =
  *
  * - registrar usuarios
  * - consultar todos los usuarios
+ * - activar o desactivar usuarios
  * - modificar cursos
  * - modificar módulos
  */
@@ -49,6 +50,10 @@ router.use(
  *
  * - cuenta en Supabase Auth
  * - registro en profiles
+ *
+ * El nuevo usuario comienza con:
+ *
+ * activo = true
  *
  * Body:
  *
@@ -89,10 +94,60 @@ router.get(
  * GET /api/admin/users
  *
  * Lista los usuarios registrados en RIMBERIO.
+ *
+ * Ahora cada perfil también puede devolver:
+ *
+ * activo: true / false
  */
 router.get(
   "/",
   UserAdminController.listarUsuarios
+)
+
+
+/* ==========================================================
+   CAMBIAR ESTADO DEL USUARIO
+   ========================================================== */
+
+/**
+ * PATCH
+ * /api/admin/users/:userId/status
+ *
+ * Permite activar o desactivar una cuenta
+ * sin eliminar al usuario.
+ *
+ * DESACTIVAR:
+ *
+ * {
+ *   "activo": false
+ * }
+ *
+ * REACTIVAR:
+ *
+ * {
+ *   "activo": true
+ * }
+ *
+ * IMPORTANTE:
+ *
+ * - no elimina la cuenta de Supabase Auth
+ * - no elimina cursos
+ * - no elimina módulos
+ * - no elimina permisos
+ * - no elimina CSV
+ * - no elimina proyectos
+ * - no elimina historial
+ *
+ * Solamente cambia:
+ *
+ * profiles.activo
+ *
+ * Las cuentas administradoras están
+ * protegidas por el controlador/modelo.
+ */
+router.patch(
+  "/:userId/status",
+  UserAdminController.cambiarEstadoUsuario
 )
 
 
@@ -187,8 +242,10 @@ router.delete(
  * Esta ruta debe quedar al final porque:
  *
  * /catalog
+ * /:userId/status
  * /:userId/permissions
  * /:userId/courses/...
+ * /:userId/modules/...
  *
  * son rutas más específicas.
  *

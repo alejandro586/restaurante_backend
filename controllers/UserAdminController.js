@@ -440,6 +440,156 @@ class UserAdminController {
 
 
   /* ==========================================================
+     PATCH /api/admin/users/:userId/status
+     ========================================================== */
+
+  /**
+   * Activa o desactiva una cuenta de usuario.
+   *
+   * Body esperado:
+   *
+   * {
+   *   "activo": true
+   * }
+   *
+   * o:
+   *
+   * {
+   *   "activo": false
+   * }
+   *
+   * Los administradores no pueden ser
+   * desactivados mediante esta ruta.
+   */
+  async cambiarEstadoUsuario(req, res) {
+    const userId =
+      String(
+        req.params.userId || ""
+      ).trim()
+
+
+    if (!uuidValido(userId)) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "Usuario no valido"
+        })
+    }
+
+
+    const {
+      activo
+    } =
+      req.body || {}
+
+
+    if (
+      typeof activo !==
+      "boolean"
+    ) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "El estado activo debe ser true o false"
+        })
+    }
+
+
+    try {
+      const model =
+        new UserAdminModel(
+          req.user
+        )
+
+
+      const resultado =
+        await model
+          .cambiarEstadoUsuario(
+            userId,
+            activo
+          )
+
+
+      /* ======================================================
+         USUARIO NO EXISTE
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "user_not_found"
+      ) {
+        return res
+          .status(404)
+          .json({
+            error:
+              "Usuario no encontrado"
+          })
+      }
+
+
+      /* ======================================================
+         ESTADO INVALIDO
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "invalid_state"
+      ) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "El estado del usuario no es valido"
+          })
+      }
+
+
+      /* ======================================================
+         PROTEGER ADMINISTRADORES
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "admin_not_allowed"
+      ) {
+        return res
+          .status(403)
+          .json({
+            error:
+              "No se puede desactivar una cuenta administradora"
+          })
+      }
+
+
+      /* ======================================================
+         RESPUESTA
+         ====================================================== */
+
+      return res.json({
+        ok:
+          true,
+
+        mensaje:
+          activo
+            ? "Usuario reactivado correctamente"
+            : "Usuario desactivado correctamente",
+
+        usuario:
+          resultado.usuario
+      })
+
+    } catch (error) {
+      sendError(
+        res,
+        error
+      )
+    }
+  }
+
+
+  /* ==========================================================
      GET /api/admin/users/:userId/permissions
      ========================================================== */
 
@@ -935,6 +1085,11 @@ export default {
   obtenerUsuario:
     controller
       .obtenerUsuario
+      .bind(controller),
+
+  cambiarEstadoUsuario:
+    controller
+      .cambiarEstadoUsuario
       .bind(controller),
 
   permisosUsuario:
