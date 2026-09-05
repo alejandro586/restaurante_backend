@@ -1,137 +1,668 @@
-import nodemailer from "nodemailer"
-
 /**
- * Convierte texto a HTML seguro.
- * Evita que nombres o proyectos puedan
- * inyectar etiquetas dentro del correo.
+ * RIMBERIO - Servicio de correo mediante Brevo API.
+ *
+ * Variables necesarias en Render:
+ *
+ * BREVO_API_KEY
+ * BREVO_SENDER_EMAIL
+ * BREVO_SENDER_NAME
+ * FRONTEND_URL
+ *
+ * IMPORTANTE:
+ *
+ * - No usa SMTP.
+ * - No usa Nodemailer.
+ * - No utiliza puertos 465/587.
+ * - Todo se envía mediante HTTPS.
  */
-const escaparHtml = (valor = "") => {
-  return String(valor)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")
-}
 
-/**
- * Nombres visibles de los roles
- * internos del proyecto.
- */
+
+const BREVO_API_BASE =
+  "https://api.brevo.com/v3"
+
+
 const ROLE_LABELS = {
-  owner: "Propietario",
-  manager: "Responsable",
-  developer: "Desarrollador",
-  member: "Miembro",
-  viewer: "Solo lectura"
+  owner:
+    "Propietario",
+
+  manager:
+    "Responsable",
+
+  developer:
+    "Desarrollador",
+
+  member:
+    "Miembro",
+
+  viewer:
+    "Solo lectura"
 }
+
+
+/* ==========================================================
+   UTILIDADES
+   ========================================================== */
+
+const escaparHtml =
+  (
+    valor =
+      ""
+  ) =>
+    String(
+      valor
+    )
+      .replaceAll(
+        "&",
+        "&amp;"
+      )
+      .replaceAll(
+        "<",
+        "&lt;"
+      )
+      .replaceAll(
+        ">",
+        "&gt;"
+      )
+      .replaceAll(
+        '"',
+        "&quot;"
+      )
+      .replaceAll(
+        "'",
+        "&#039;"
+      )
+
+
+const normalizarCorreo =
+  (
+    email
+  ) =>
+    String(
+      email ||
+      ""
+    )
+      .trim()
+      .toLowerCase()
+
+
+const correoValido =
+  (
+    email
+  ) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      .test(
+        normalizarCorreo(
+          email
+        )
+      )
+
+
+const textoSeguroError =
+  (
+    valor
+  ) =>
+    String(
+      valor ||
+      ""
+    )
+      .replace(
+        /[\r\n\t]+/g,
+        " "
+      )
+      .trim()
+      .slice(
+        0,
+        300
+      )
+
+
+/* ==========================================================
+   MAIL SERVICE
+   ========================================================== */
 
 class MailService {
-  /**
-   * Comprueba que Render tenga
-   * configuradas las variables SMTP.
-   */
+
+  /* ========================================================
+     CONFIGURACION
+     ======================================================== */
+
   obtenerConfiguracion() {
-    const host =
-      process.env.SMTP_HOST
 
-    const port =
-      Number(
-        process.env.SMTP_PORT ||
-          465
+    const apiKey =
+      String(
+        process.env
+          .BREVO_API_KEY ||
+        ""
+      ).trim()
+
+
+    const senderEmail =
+      normalizarCorreo(
+        process.env
+          .BREVO_SENDER_EMAIL
       )
 
-    const user =
-      process.env.SMTP_USER
 
-    const pass =
-      process.env.SMTP_PASS
+    const senderName =
+      String(
+        process.env
+          .BREVO_SENDER_NAME ||
+        "RIMBERIO"
+      ).trim() ||
+      "RIMBERIO"
 
-    const frontendUrl =
-      process.env.FRONTEND_URL ||
-      process.env.CLIENT_URL
 
-    if (!host) {
+    const frontendRaw =
+      String(
+        process.env
+          .FRONTEND_URL ||
+
+        process.env
+          .CLIENT_URL ||
+
+        ""
+      ).trim()
+
+
+    /* ======================================================
+       VALIDACIONES
+       ====================================================== */
+
+    if (
+      !apiKey
+    ) {
+
       throw new Error(
-        "Falta configurar SMTP_HOST"
+        "Falta configurar BREVO_API_KEY"
       )
     }
 
-    if (!user) {
+
+    if (
+      !senderEmail
+    ) {
+
       throw new Error(
-        "Falta configurar SMTP_USER"
+        "Falta configurar BREVO_SENDER_EMAIL"
       )
     }
 
-    if (!pass) {
+
+    if (
+      !correoValido(
+        senderEmail
+      )
+    ) {
+
       throw new Error(
-        "Falta configurar SMTP_PASS"
+        "BREVO_SENDER_EMAIL no es un correo válido"
       )
     }
 
-    if (!frontendUrl) {
+
+    if (
+      !frontendRaw
+    ) {
+
       throw new Error(
         "Falta configurar FRONTEND_URL"
       )
     }
 
-    /**
-     * Puerto 465 normalmente usa TLS
-     * desde el inicio.
+
+    /*
+     * CLIENT_URL puede tener más
+     * de una URL separada por comas.
      *
-     * Puerto 587 normalmente inicia
-     * sin secure y luego utiliza STARTTLS.
+     * Para los enlaces enviados
+     * por correo utilizamos únicamente
+     * la primera.
      */
-    const secure =
-      process.env.SMTP_SECURE !==
-      undefined
-        ? process.env.SMTP_SECURE ===
-          "true"
-        : port === 465
+    const frontendUrl =
+      frontendRaw
+        .split(
+          ","
+        )[0]
+        .trim()
+        .replace(
+          /\/+$/,
+          ""
+        )
+
+
+    try {
+
+      new URL(
+        frontendUrl
+      )
+
+    } catch {
+
+      throw new Error(
+        "FRONTEND_URL no es una URL válida"
+      )
+    }
+
 
     return {
-      host,
-      port,
-      user,
-      pass,
-      secure,
-      frontendUrl:
-        frontendUrl
-          .split(",")[0]
-          .trim()
-          .replace(/\/+$/, "")
+      apiKey,
+      senderEmail,
+      senderName,
+      frontendUrl
     }
   }
 
-  /**
-   * Crea la conexión SMTP.
-   */
-  crearTransporter() {
+
+  /* ========================================================
+     PETICIONES A BREVO
+     ======================================================== */
+
+  async solicitarBrevo(
+    path,
+    {
+      method =
+        "GET",
+
+      body
+    } = {}
+  ) {
+
     const config =
-      this.obtenerConfiguracion()
+      this
+        .obtenerConfiguracion()
 
-    return nodemailer.createTransport({
-      host: config.host,
 
-      port: config.port,
+    const headers = {
+      accept:
+        "application/json",
 
-      secure: config.secure,
+      "api-key":
+        config.apiKey
+    }
 
-      auth: {
-        user: config.user,
-        pass: config.pass
+
+    const opciones = {
+      method,
+      headers
+    }
+
+
+    if (
+      body !==
+      undefined
+    ) {
+
+      headers[
+        "content-type"
+      ] =
+        "application/json"
+
+
+      opciones.body =
+        JSON.stringify(
+          body
+        )
+    }
+
+
+    let response
+
+
+    /* ======================================================
+       CONECTAR
+       ====================================================== */
+
+    try {
+
+      response =
+        await fetch(
+          `${BREVO_API_BASE}${path}`,
+          opciones
+        )
+
+    } catch (
+      error
+    ) {
+
+      /*
+       * Nunca mostramos ni registramos
+       * BREVO_API_KEY.
+       */
+      console.error(
+        "No se pudo conectar con Brevo API:",
+        error?.message ||
+        error
+      )
+
+
+      throw new Error(
+        "No se pudo conectar con el servicio de correo"
+      )
+    }
+
+
+    /* ======================================================
+       LEER RESPUESTA
+       ====================================================== */
+
+    let data =
+      null
+
+
+    try {
+
+      const contentType =
+        String(
+          response
+            .headers
+            .get(
+              "content-type"
+            ) ||
+          ""
+        )
+          .toLowerCase()
+
+
+      if (
+        contentType.includes(
+          "application/json"
+        )
+      ) {
+
+        data =
+          await response
+            .json()
+
+      } else {
+
+        const texto =
+          await response
+            .text()
+
+
+        data =
+          texto
+            ? {
+                message:
+                  texto
+              }
+            : null
       }
-    })
+
+    } catch {
+
+      data =
+        null
+    }
+
+
+    /* ======================================================
+       ERROR BREVO
+       ====================================================== */
+
+    if (
+      !response.ok
+    ) {
+
+      const detalle =
+        textoSeguroError(
+          data?.message ||
+          data?.error ||
+          ""
+        )
+
+
+      console.error(
+        "Brevo API rechazó la solicitud:",
+        {
+          status:
+            response.status,
+
+          detalle:
+            detalle ||
+            "Sin detalle"
+        }
+      )
+
+
+      /*
+       * API Key incorrecta
+       * o no autorizada.
+       */
+      if (
+        response.status ===
+        401
+      ) {
+
+        throw new Error(
+          "Brevo rechazó la API Key"
+        )
+      }
+
+
+      /*
+       * Normalmente ocurre si:
+       *
+       * - remitente no verificado
+       * - correo incorrecto
+       * - campos inválidos
+       */
+      if (
+        response.status ===
+        400
+      ) {
+
+        throw new Error(
+          detalle ||
+          "Brevo rechazó los datos del correo"
+        )
+      }
+
+
+      throw new Error(
+        detalle ||
+        `Brevo no pudo procesar el correo (${response.status})`
+      )
+    }
+
+
+    return data
   }
 
-  /**
-   * Genera el enlace que recibirá
-   * el usuario invitado.
-   */
-  crearUrlInvitacion(token) {
+
+  /* ========================================================
+     ENVIO GENERICO
+     ======================================================== */
+
+  async enviarCorreo({
+    email,
+    nombre =
+      "",
+    subject,
+    html
+  }) {
+
+    const config =
+      this
+        .obtenerConfiguracion()
+
+
+    const correo =
+      normalizarCorreo(
+        email
+      )
+
+
+    const asunto =
+      String(
+        subject ||
+        ""
+      ).trim()
+
+
+    const htmlFinal =
+      String(
+        html ||
+        ""
+      ).trim()
+
+
+    /* ======================================================
+       VALIDACIONES
+       ====================================================== */
+
+    if (
+      !correoValido(
+        correo
+      )
+    ) {
+
+      throw new Error(
+        "El correo destinatario no es válido"
+      )
+    }
+
+
+    if (
+      !asunto
+    ) {
+
+      throw new Error(
+        "El asunto del correo es obligatorio"
+      )
+    }
+
+
+    if (
+      !htmlFinal
+    ) {
+
+      throw new Error(
+        "El contenido del correo es obligatorio"
+      )
+    }
+
+
+    const destinatario = {
+      email:
+        correo
+    }
+
+
+    const nombreDestinatario =
+      String(
+        nombre ||
+        ""
+      ).trim()
+
+
+    if (
+      nombreDestinatario
+    ) {
+
+      destinatario.name =
+        nombreDestinatario
+    }
+
+
+    /* ======================================================
+       ENVIAR
+       ====================================================== */
+
+    const resultado =
+      await this
+        .solicitarBrevo(
+          "/smtp/email",
+          {
+            method:
+              "POST",
+
+            body: {
+
+              sender: {
+                name:
+                  config.senderName,
+
+                email:
+                  config.senderEmail
+              },
+
+
+              to: [
+                destinatario
+              ],
+
+
+              subject:
+                asunto,
+
+
+              htmlContent:
+                htmlFinal
+            }
+          }
+        )
+
+
+    /* ======================================================
+       COMPROBAR RESULTADO
+       ====================================================== */
+
+    if (
+      !resultado
+        ?.messageId
+    ) {
+
+      throw new Error(
+        "Brevo aceptó la petición pero no devolvió un identificador de correo"
+      )
+    }
+
+
+    return {
+      enviado:
+        true,
+
+      messageId:
+        resultado.messageId,
+
+      email:
+        correo
+    }
+  }
+
+
+  /* ========================================================
+     URL INVITACION
+     ======================================================== */
+
+  crearUrlInvitacion(
+    token
+  ) {
+
     const {
       frontendUrl
-    } = this.obtenerConfiguracion()
+    } =
+      this
+        .obtenerConfiguracion()
+
+
+    const tokenFinal =
+      String(
+        token ||
+        ""
+      ).trim()
+
+
+    if (
+      !tokenFinal
+    ) {
+
+      throw new Error(
+        "El token de invitación es obligatorio"
+      )
+    }
+
 
     const url =
       new URL(
@@ -139,18 +670,44 @@ class MailService {
         frontendUrl
       )
 
-    url.searchParams.set(
-      "token",
-      token
-    )
 
-    return url.toString()
+    url.searchParams
+      .set(
+        "token",
+        tokenFinal
+      )
+
+
+    return url
+      .toString()
   }
 
-  /**
-   * Envía una invitación
-   * para unirse a un proyecto.
-   */
+
+  /* ========================================================
+     URL RECUPERACION
+     ======================================================== */
+
+  crearUrlRestablecerPassword() {
+
+    const {
+      frontendUrl
+    } =
+      this
+        .obtenerConfiguracion()
+
+
+    return new URL(
+      "/restablecer-password",
+      frontendUrl
+    )
+      .toString()
+  }
+
+
+  /* ========================================================
+     ENVIAR INVITACION
+     ======================================================== */
+
   async enviarInvitacion({
     email,
     token,
@@ -159,77 +716,83 @@ class MailService {
     role,
     expiresAt
   }) {
-    const config =
-      this.obtenerConfiguracion()
 
-    const transporter =
-      this.crearTransporter()
+    const correo =
+      normalizarCorreo(
+        email
+      )
+
+
+    if (
+      !correoValido(
+        correo
+      )
+    ) {
+
+      throw new Error(
+        "El correo de invitación no es válido"
+      )
+    }
+
 
     const url =
-      this.crearUrlInvitacion(
-        token
-      )
+      this
+        .crearUrlInvitacion(
+          token
+        )
+
 
     const nombreProyecto =
       proyecto?.nombre ||
       "Proyecto RIMBERIO"
+
 
     const nombreInvitador =
       invitador?.full_name ||
       invitador?.email ||
       "Un administrador"
 
+
     const nombreRol =
-      ROLE_LABELS[role] ||
+      ROLE_LABELS[
+        role
+      ] ||
       role ||
       "Miembro"
+
 
     const fechaExpiracion =
       expiresAt
         ? new Date(
             expiresAt
-          ).toLocaleDateString(
-            "es-PE",
-            {
-              day: "2-digit",
-              month: "long",
-              year: "numeric"
-            }
           )
+            .toLocaleDateString(
+              "es-PE",
+              {
+                day:
+                  "2-digit",
+
+                month:
+                  "long",
+
+                year:
+                  "numeric"
+              }
+            )
         : "7 días"
 
-    const from =
-      process.env.MAIL_FROM ||
-      `RIMBERIO <${config.user}>`
 
     const subject =
       `Invitación a ${nombreProyecto} | RIMBERIO`
 
-    const text = `
-Has sido invitado a colaborar en RIMBERIO.
-
-Proyecto:
-${nombreProyecto}
-
-Invitado por:
-${nombreInvitador}
-
-Rol:
-${nombreRol}
-
-La invitación vence:
-${fechaExpiracion}
-
-Aceptar invitación:
-${url}
-
-Si no esperabas esta invitación, puedes ignorar este correo.
-    `.trim()
 
     const html = `
 <!DOCTYPE html>
+
 <html lang="es">
+
 <head>
+
   <meta charset="UTF-8">
 
   <meta
@@ -240,7 +803,9 @@ Si no esperabas esta invitación, puedes ignorar este correo.
   <title>
     Invitación RIMBERIO
   </title>
+
 </head>
+
 
 <body
   style="
@@ -266,8 +831,12 @@ Si no esperabas esta invitación, puedes ignorar este correo.
       padding:32px 16px;
     "
   >
+
     <tr>
-      <td align="center">
+
+      <td
+        align="center"
+      >
 
         <table
           role="presentation"
@@ -278,16 +847,20 @@ Si no esperabas esta invitación, puedes ignorar este correo.
             width:100%;
             max-width:600px;
             background:#ffffff;
-            border:1px solid #eadfd5;
+            border:
+              1px solid #eadfd5;
             border-radius:16px;
             overflow:hidden;
           "
         >
 
           <tr>
+
             <td
               style="
-                padding:24px 28px;
+                padding:
+                  24px 28px;
+
                 border-bottom:
                   1px solid #eadfd5;
               "
@@ -305,6 +878,7 @@ Si no esperabas esta invitación, puedes ignorar este correo.
                 RIMBERIO
               </div>
 
+
               <div
                 style="
                   margin-top:4px;
@@ -317,12 +891,16 @@ Si no esperabas esta invitación, puedes ignorar este correo.
               </div>
 
             </td>
+
           </tr>
 
+
           <tr>
+
             <td
               style="
-                padding:32px 28px;
+                padding:
+                  32px 28px;
               "
             >
 
@@ -330,31 +908,41 @@ Si no esperabas esta invitación, puedes ignorar este correo.
                 style="
                   margin:
                     0 0 14px;
+
                   font-size:23px;
                   line-height:1.3;
                   color:#2e261f;
                 "
               >
-                Has recibido una
-                invitación
+
+                Has recibido
+                una invitación
+
               </h1>
+
 
               <p
                 style="
                   margin:
                     0 0 24px;
+
                   color:#6d5f53;
                   font-size:15px;
                   line-height:1.7;
                 "
               >
+
                 ${escaparHtml(
                   nombreInvitador
                 )}
-                te ha invitado a
-                colaborar en un
-                proyecto de RIMBERIO.
+
+                te ha invitado
+                a colaborar en
+                un proyecto de
+                RIMBERIO.
+
               </p>
+
 
               <table
                 role="presentation"
@@ -372,39 +960,51 @@ Si no esperabas esta invitación, puedes ignorar este correo.
               >
 
                 <tr>
+
                   <td
                     style="
                       padding:
                         16px 18px 8px;
+
                       font-size:12px;
                       color:#8a796a;
                     "
                   >
                     PROYECTO
                   </td>
+
                 </tr>
 
+
                 <tr>
+
                   <td
                     style="
                       padding:
                         0 18px 16px;
+
                       font-size:17px;
                       font-weight:700;
                       color:#2e261f;
                     "
                   >
+
                     ${escaparHtml(
                       nombreProyecto
                     )}
+
                   </td>
+
                 </tr>
 
+
                 <tr>
+
                   <td
                     style="
                       border-top:
                         1px solid #eadfd5;
+
                       padding:
                         14px 18px;
                     "
@@ -421,21 +1021,26 @@ Si no esperabas esta invitación, puedes ignorar este correo.
                       ROL ASIGNADO
                     </span>
 
+
                     <strong
                       style="
                         font-size:14px;
                         color:#2e261f;
                       "
                     >
+
                       ${escaparHtml(
                         nombreRol
                       )}
+
                     </strong>
 
                   </td>
+
                 </tr>
 
               </table>
+
 
               <div
                 style="
@@ -446,7 +1051,9 @@ Si no esperabas esta invitación, puedes ignorar este correo.
               >
 
                 <a
-                  href="${url}"
+                  href="${escaparHtml(
+                    url
+                  )}"
                   style="
                     display:inline-block;
                     background:#c1541f;
@@ -459,25 +1066,34 @@ Si no esperabas esta invitación, puedes ignorar este correo.
                     border-radius:9px;
                   "
                 >
+
                   Aceptar invitación
+
                 </a>
 
               </div>
+
 
               <p
                 style="
                   margin:
                     22px 0 5px;
+
                   color:#8a796a;
                   font-size:12px;
                   line-height:1.6;
                 "
               >
-                Esta invitación vence el
+
+                Esta invitación
+                vence el
+
                 ${escaparHtml(
                   fechaExpiracion
                 )}.
+
               </p>
+
 
               <p
                 style="
@@ -487,205 +1103,213 @@ Si no esperabas esta invitación, puedes ignorar este correo.
                   line-height:1.6;
                 "
               >
-                Debes iniciar sesión con
-                el mismo correo al que se
-                envió esta invitación.
+
+                Debes iniciar sesión
+                con el mismo correo
+                al que se envió
+                esta invitación.
+
               </p>
 
             </td>
+
           </tr>
 
+
           <tr>
+
             <td
               style="
-                padding:18px 28px;
+                padding:
+                  18px 28px;
+
                 background:#faf7f4;
                 border-top:
                   1px solid #eadfd5;
+
                 color:#8a796a;
                 font-size:11px;
                 line-height:1.6;
               "
             >
-              Si no esperabas recibir
-              esta invitación, puedes
-              ignorar este mensaje.
+
+              Si no esperabas
+              recibir esta invitación,
+              puedes ignorar
+              este mensaje.
+
             </td>
+
           </tr>
 
         </table>
 
       </td>
+
     </tr>
+
   </table>
 
 </body>
+
 </html>
     `.trim()
 
+
+    /* ======================================================
+       ENVIAR CON BREVO
+       ====================================================== */
+
     const resultado =
-      await transporter.sendMail({
-        from,
-        to: email,
-        subject,
-        text,
-        html
-      })
+      await this
+        .enviarCorreo({
+          email:
+            correo,
+
+          subject,
+
+          html
+        })
+
 
     return {
-      enviado: true,
-
-      messageId:
-        resultado.messageId,
-
-      email,
+      ...resultado,
 
       url
     }
   }
 
-  /**
-   * Genera la URL pública donde el usuario
-   * introduce su código y nueva contraseña.
-   *
-   * No colocamos el código en la URL.
-   */
-  crearUrlRestablecerPassword() {
-    const {
-      frontendUrl
-    } = this.obtenerConfiguracion()
 
-    const url =
-      new URL(
-        "/restablecer-password",
-        frontendUrl
-      )
+  /* ========================================================
+     ENVIAR CODIGO DE RECUPERACION
+     ======================================================== */
 
-    return url.toString()
-  }
-
-  /**
-   * Envía el código de recuperación de contraseña.
-   *
-   * IMPORTANTE:
-   * - El administrador NO recibe el código.
-   * - El código solo se envía al correo del usuario.
-   * - Este método nunca registra el código en consola.
-   * - El código no se agrega a la URL.
-   */
   async enviarCodigoRecuperacion({
     email,
     nombre,
     codigo,
-    venceEnMinutos = 15
+    venceEnMinutos =
+      15
   }) {
+
     const correo =
-      String(
-        email || ""
+      normalizarCorreo(
+        email
       )
-        .trim()
-        .toLowerCase()
+
 
     const codigoFinal =
       String(
-        codigo || ""
+        codigo ||
+        ""
       ).trim()
+
 
     const minutos =
       Number(
         venceEnMinutos
       )
 
+
+    const nombreUsuario =
+      String(
+        nombre ||
+        "Usuario"
+      ).trim() ||
+      "Usuario"
+
+
+    /* ======================================================
+       VALIDACIONES
+       ====================================================== */
+
     if (
-      !correo ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      !correoValido(
         correo
       )
     ) {
+
       throw new Error(
-        "Correo de recuperación no válido"
+        "El correo de recuperación no es válido"
       )
     }
 
+
+    /*
+     * Muy importante:
+     *
+     * codigo se mantiene como String
+     * para conservar códigos como:
+     *
+     * 012345
+     */
     if (
-      !/^\d{6}$/.test(
-        codigoFinal
-      )
+      !/^\d{6}$/
+        .test(
+          codigoFinal
+        )
     ) {
+
       throw new Error(
-        "Código de recuperación no válido"
+        "El código de recuperación debe tener exactamente 6 números"
       )
     }
+
 
     if (
       !Number.isFinite(
         minutos
       ) ||
-      minutos <= 0
+
+      minutos <=
+        0
     ) {
+
       throw new Error(
-        "Tiempo de expiración no válido"
+        "El tiempo de expiración del código no es válido"
       )
     }
 
-    const config =
-      this.obtenerConfiguracion()
-
-    const transporter =
-      this.crearTransporter()
-
-    const from =
-      process.env.MAIL_FROM ||
-      `RIMBERIO <${config.user}>`
-
-    const nombreUsuario =
-      String(
-        nombre || "Usuario"
-      ).trim() ||
-      "Usuario"
 
     const url =
-      this.crearUrlRestablecerPassword()
+      this
+        .crearUrlRestablecerPassword()
+
 
     const subject =
       "Código de recuperación | RIMBERIO"
 
-    const text = `
-Hola ${nombreUsuario},
-
-Un administrador autorizó tu solicitud para recuperar la contraseña de RIMBERIO.
-
-Tu código de recuperación es:
-
-${codigoFinal}
-
-Este código vence en ${minutos} minutos y solo puede utilizarse una vez.
-
-Ingresa el código y establece tu nueva contraseña aquí:
-${url}
-
-Si no solicitaste este cambio, puedes ignorar este correo.
-No compartas este código con nadie.
-    `.trim()
 
     const html = `
 <!DOCTYPE html>
+
 <html lang="es">
+
 <head>
+
   <meta charset="UTF-8">
+
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   >
-  <title>Recuperación de contraseña | RIMBERIO</title>
+
+  <title>
+    Recuperación de contraseña | RIMBERIO
+  </title>
+
 </head>
+
 
 <body
   style="
     margin:0;
     padding:0;
     background:#f6f2ee;
-    font-family:Arial,Helvetica,sans-serif;
+    font-family:
+      Arial,
+      Helvetica,
+      sans-serif;
     color:#2e261f;
   "
 >
@@ -698,11 +1322,16 @@ No compartas este código con nadie.
     style="
       width:100%;
       background:#f6f2ee;
-      padding:32px 16px;
+      padding:
+        32px 16px;
     "
   >
+
     <tr>
-      <td align="center">
+
+      <td
+        align="center"
+      >
 
         <table
           role="presentation"
@@ -713,29 +1342,37 @@ No compartas este código con nadie.
             width:100%;
             max-width:600px;
             background:#ffffff;
-            border:1px solid #eadfd5;
+            border:
+              1px solid #eadfd5;
             border-radius:16px;
             overflow:hidden;
           "
         >
 
           <tr>
+
             <td
               style="
-                padding:24px 28px;
-                border-bottom:1px solid #eadfd5;
+                padding:
+                  24px 28px;
+
+                border-bottom:
+                  1px solid #eadfd5;
               "
             >
+
               <div
                 style="
                   font-size:20px;
                   font-weight:700;
-                  letter-spacing:0.04em;
+                  letter-spacing:
+                    0.04em;
                   color:#c1541f;
                 "
               >
                 RIMBERIO
               </div>
+
 
               <div
                 style="
@@ -744,98 +1381,161 @@ No compartas este código con nadie.
                   color:#8a796a;
                 "
               >
-                Recuperación de contraseña
+
+                Recuperación segura
+                de contraseña
+
               </div>
+
             </td>
+
           </tr>
 
+
           <tr>
+
             <td
               style="
-                padding:32px 28px;
+                padding:
+                  32px 28px;
               "
             >
+
               <h1
                 style="
-                  margin:0 0 14px;
+                  margin:
+                    0 0 14px;
+
                   font-size:23px;
                   line-height:1.3;
                   color:#2e261f;
                 "
               >
-                Recupera tu acceso
+
+                Código de recuperación
+
               </h1>
+
 
               <p
                 style="
-                  margin:0 0 22px;
+                  margin:
+                    0 0 20px;
+
                   color:#6d5f53;
                   font-size:15px;
                   line-height:1.7;
                 "
               >
-                Hola ${escaparHtml(
-                  nombreUsuario
-                )}. Un administrador autorizó tu solicitud para cambiar la contraseña de RIMBERIO.
+
+                Hola
+
+                <strong>
+
+                  ${escaparHtml(
+                    nombreUsuario
+                  )}
+
+                </strong>.
+
+                Tu solicitud para
+                cambiar la contraseña
+                fue aprobada.
+
               </p>
 
-              <div
-                style="
-                  margin:26px 0;
-                  padding:22px 18px;
-                  background:#faf7f4;
-                  border:1px solid #eadfd5;
-                  border-radius:12px;
-                  text-align:center;
-                "
-              >
-                <div
-                  style="
-                    margin-bottom:8px;
-                    font-size:12px;
-                    color:#8a796a;
-                    letter-spacing:0.08em;
-                  "
-                >
-                  TU CÓDIGO
-                </div>
-
-                <div
-                  style="
-                    font-size:34px;
-                    line-height:1;
-                    font-weight:700;
-                    letter-spacing:0.18em;
-                    color:#2e261f;
-                  "
-                >
-                  ${escaparHtml(
-                    codigoFinal
-                  )}
-                </div>
-              </div>
 
               <p
                 style="
-                  margin:0 0 22px;
-                  color:#6d5f53;
-                  font-size:14px;
-                  line-height:1.7;
+                  margin:
+                    0 0 10px;
+
+                  color:#8a796a;
+                  font-size:12px;
+                  text-align:center;
                 "
               >
-                Este código vence en
-                <strong>${escaparHtml(
-                  minutos
-                )} minutos</strong>
-                y solo puede utilizarse una vez.
+
+                TU CÓDIGO
+
               </p>
+
+
+              <div
+                style="
+                  margin:
+                    0 auto 14px;
+
+                  max-width:320px;
+
+                  padding:
+                    20px 18px;
+
+                  background:#faf7f4;
+
+                  border:
+                    1px solid #eadfd5;
+
+                  border-radius:12px;
+
+                  text-align:center;
+
+                  font-family:
+                    monospace;
+
+                  font-size:34px;
+
+                  font-weight:800;
+
+                  letter-spacing:
+                    8px;
+
+                  color:#2e261f;
+                "
+              >
+
+                ${escaparHtml(
+                  codigoFinal
+                )}
+
+              </div>
+
+
+              <p
+                style="
+                  margin:
+                    0 0 24px;
+
+                  color:#8a796a;
+
+                  font-size:12px;
+
+                  text-align:center;
+
+                  line-height:1.6;
+                "
+              >
+
+                Este código vence
+                en aproximadamente
+
+                ${escaparHtml(
+                  minutos
+                )}
+
+                minutos.
+
+              </p>
+
 
               <div
                 style="
                   text-align:center;
-                  margin:28px 0;
+                  margin:
+                    26px 0;
                 "
               >
+
                 <a
                   href="${escaparHtml(
                     url
@@ -847,63 +1547,150 @@ No compartas este código con nadie.
                     text-decoration:none;
                     font-size:14px;
                     font-weight:700;
-                    padding:13px 24px;
+                    padding:
+                      13px 24px;
                     border-radius:9px;
                   "
                 >
+
                   Ingresar código
+
                 </a>
+
               </div>
 
-              <p
+
+              <div
                 style="
-                  margin:22px 0 0;
-                  color:#8a796a;
+                  margin-top:24px;
+                  padding:
+                    14px 16px;
+
+                  background:#fff7ed;
+
+                  border:
+                    1px solid #fed7aa;
+
+                  border-radius:10px;
+
+                  color:#9a3412;
+
                   font-size:12px;
+
                   line-height:1.6;
                 "
               >
-                No compartas este código con nadie. El personal de RIMBERIO no necesita conocerlo para completar el cambio de contraseña.
+
+                No compartas este código
+                con otras personas.
+
+                El administrador de
+                RIMBERIO no necesita
+                conocerlo.
+
+              </div>
+
+
+              <p
+                style="
+                  margin:
+                    18px 0 0;
+
+                  color:#8a796a;
+
+                  font-size:12px;
+
+                  line-height:1.6;
+                "
+              >
+
+                Si no solicitaste recuperar
+                tu contraseña, puedes
+                ignorar este mensaje.
+
               </p>
+
             </td>
+
           </tr>
 
+
           <tr>
+
             <td
               style="
-                padding:18px 28px;
+                padding:
+                  18px 28px;
+
                 background:#faf7f4;
-                border-top:1px solid #eadfd5;
+
+                border-top:
+                  1px solid #eadfd5;
+
                 color:#8a796a;
+
                 font-size:11px;
+
                 line-height:1.6;
               "
             >
-              Si no solicitaste recuperar tu contraseña, puedes ignorar este mensaje.
+
+              Este es un mensaje
+              automático de seguridad
+              de RIMBERIO.
+
             </td>
+
           </tr>
 
         </table>
 
       </td>
+
     </tr>
+
   </table>
 
 </body>
+
 </html>
     `.trim()
 
-    const resultado =
-      await transporter.sendMail({
-        from,
-        to: correo,
-        subject,
-        text,
-        html
-      })
 
+    /* ======================================================
+       ENVIAR CON BREVO
+       ====================================================== */
+
+    const resultado =
+      await this
+        .enviarCorreo({
+
+          email:
+            correo,
+
+
+          nombre:
+            nombreUsuario,
+
+
+          subject,
+
+
+          html
+        })
+
+
+    /*
+     * IMPORTANTE:
+     *
+     * El código NO se devuelve aquí.
+     *
+     * Únicamente devolvemos información
+     * del envío.
+     */
     return {
-      enviado: true,
+      enviado:
+        true,
 
       messageId:
         resultado.messageId,
@@ -913,21 +1700,48 @@ No compartas este código con nadie.
     }
   }
 
-  /**
-   * Sirve para comprobar la
-   * configuración SMTP.
-   *
-   * Lo utilizaremos si necesitamos
-   * diagnosticar el correo.
-   */
-  async verificarConexion() {
-    const transporter =
-      this.crearTransporter()
 
-    await transporter.verify()
+  /* ========================================================
+     VERIFICAR CONEXION
+     ======================================================== */
+
+  async verificarConexion() {
+
+    /*
+     * GET /v3/account
+     *
+     * Permite comprobar que:
+     *
+     * - Brevo responde
+     * - BREVO_API_KEY es válida
+     *
+     * No enviamos ningún correo
+     * durante esta prueba.
+     */
+    const resultado =
+      await this
+        .solicitarBrevo(
+          "/account",
+          {
+            method:
+              "GET"
+          }
+        )
+
+
+    if (
+      !resultado
+    ) {
+
+      throw new Error(
+        "Brevo no devolvió información de la cuenta"
+      )
+    }
+
 
     return true
   }
 }
+
 
 export default new MailService()
