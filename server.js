@@ -23,6 +23,67 @@ const port =
   process.env.PORT || 4000
 
 
+  /* ==========================================================
+   DIAGNOSTICO TEMPORAL PASSWORD RESET
+   ========================================================== */
+
+const passwordResetSecretRaw =
+  process.env.PASSWORD_RESET_SECRET
+
+const passwordResetSecret =
+  String(
+    passwordResetSecretRaw ??
+    ""
+  ).trim()
+
+console.log(
+  "=== DIAGNOSTICO PASSWORD_RESET_SECRET ==="
+)
+
+console.log({
+  existe:
+    typeof passwordResetSecretRaw ===
+    "string",
+
+  longitudRaw:
+    typeof passwordResetSecretRaw ===
+    "string"
+      ? passwordResetSecretRaw.length
+      : 0,
+
+  longitudTrim:
+    passwordResetSecret.length,
+
+  empiezaConKey:
+    passwordResetSecret.startsWith(
+      "key="
+    ),
+
+  tieneComillasInicio:
+    passwordResetSecret.startsWith(
+      '"'
+    ) ||
+    passwordResetSecret.startsWith(
+      "'"
+    ),
+
+  tieneComillasFinal:
+    passwordResetSecret.endsWith(
+      '"'
+    ) ||
+    passwordResetSecret.endsWith(
+      "'"
+    ),
+
+  cumpleMinimo32:
+    passwordResetSecret.length >=
+    32
+})
+
+console.log(
+  "========================================="
+)
+
 /* ==========================================================
    CORS
    ========================================================== */
