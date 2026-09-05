@@ -9,6 +9,8 @@ import compararRoutes from "./routes/comparar.routes.js"
 import tareaRoutes from "./routes/tarea.routes.js"
 
 import courseRoutes from "./routes/course.routes.js"
+import courseDocumentRoutes from "./routes/course-document.routes.js"
+
 import adminUserRoutes from "./routes/admin-user.routes.js"
 import passwordResetRoutes from "./routes/password-reset.routes.js"
 
@@ -42,7 +44,7 @@ const port =
  *
  * CLIENT_URL=
  * https://restaurante-rimberio.vercel.app,
- * http://localhost:5000
+ * http://localhost:5173
  */
 const origins =
   (
@@ -65,14 +67,14 @@ app.use(
     ) => {
 
       /*
-       * Permite solicitudes sin Origin:
+       * Permitimos peticiones sin Origin:
        *
        * - Postman
        * - curl
        * - Render health checks
-       * - llamadas internas
        */
       if (!origin) {
+
         return callback(
           null,
           true
@@ -81,17 +83,14 @@ app.use(
 
 
       /*
-       * Si CLIENT_URL todavía no estuviera
-       * configurado, permitimos temporalmente
-       * cualquier origen.
-       *
-       * En producción CLIENT_URL sí debe
-       * estar configurado.
+       * Si CLIENT_URL no estuviera configurado,
+       * permitimos temporalmente cualquier origen.
        */
       if (
         origins.length ===
         0
       ) {
+
         return callback(
           null,
           true
@@ -100,13 +99,14 @@ app.use(
 
 
       /*
-       * Origen autorizado.
+       * Frontend autorizado.
        */
       if (
         origins.includes(
           origin
         )
       ) {
+
         return callback(
           null,
           true
@@ -131,6 +131,15 @@ app.use(
    BODY
    ========================================================== */
 
+/**
+ * Estas configuraciones son para JSON
+ * y formularios normales.
+ *
+ * Los documentos multipart/form-data
+ * son procesados por Multer dentro de:
+ *
+ * course-document.routes.js
+ */
 app.use(
   express.json({
     limit:
@@ -206,41 +215,67 @@ app.use(
 
 
 /* ==========================================================
+   DOCUMENTOS DE CURSOS
+   ========================================================== */
+
+/**
+ * MODULO PRINCIPAL DEL ERP
+ *
+ * Todas las rutas internas están
+ * protegidas mediante requireAuth.
+ *
+ *
+ * LISTAR DOCUMENTOS
+ *
+ * GET
+ * /api/course-documents/courses/:courseId
+ *
+ *
+ * FILTRAR POR MODULO
+ *
+ * GET
+ * /api/course-documents/courses/:courseId?modulo_id=1
+ *
+ *
+ * SUBIR DOCUMENTO
+ *
+ * POST
+ * /api/course-documents/courses/:courseId
+ *
+ *
+ * OBTENER URL PRIVADA
+ *
+ * GET
+ * /api/course-documents/:documentId/url
+ *
+ *
+ * ELIMINAR DOCUMENTO
+ *
+ * DELETE
+ * /api/course-documents/:documentId
+ */
+app.use(
+  "/api/course-documents",
+  courseDocumentRoutes
+)
+
+
+/* ==========================================================
    ADMINISTRACION DE USUARIOS
    ========================================================== */
 
 /**
- * Las rutas internas se encuentran
- * protegidas mediante:
+ * Solo administradores.
  *
- * requireAuth
- * requireAdmin
+ * Permite:
  *
- * Ejemplos:
- *
- * GET
- * /api/admin/users
- *
- * GET
- * /api/admin/users/catalog
- *
- * GET
- * /api/admin/users/:userId
- *
- * GET
- * /api/admin/users/:userId/permissions
- *
- * POST
- * /api/admin/users/:userId/courses/:courseId
- *
- * DELETE
- * /api/admin/users/:userId/courses/:courseId
- *
- * POST
- * /api/admin/users/:userId/modules/:moduleId
- *
- * DELETE
- * /api/admin/users/:userId/modules/:moduleId
+ * - registrar usuarios
+ * - editar usuarios
+ * - activar/desactivar
+ * - asignar cursos
+ * - retirar cursos
+ * - asignar módulos
+ * - retirar módulos
  */
 app.use(
   "/api/admin/users",
@@ -262,7 +297,7 @@ app.use(
  * /api/password-reset/complete
  *
  *
- * RUTAS ADMINISTRATIVAS:
+ * RUTAS ADMIN:
  *
  * GET
  * /api/password-reset/admin
@@ -272,19 +307,6 @@ app.use(
  *
  * POST
  * /api/password-reset/admin/:id/reject
- *
- *
- * La protección de las rutas administrativas
- * está dentro de password-reset.routes.js.
- *
- * IMPORTANTE:
- *
- * server.js NO genera códigos,
- * NO conoce códigos,
- * NO imprime PASSWORD_RESET_SECRET.
- *
- * Toda esa lógica pertenece al
- * modelo de recuperación.
  */
 app.use(
   "/api/password-reset",
@@ -317,18 +339,15 @@ app.use(
    ========================================================== */
 
 /**
- * project-invitation.routes.js contiene
- * internamente rutas como:
+ * Este archivo contiene internamente
+ * rutas como:
  *
  * /invitations/:token
  * /projects/:id/invitations
  * /mail/health
  *
- * Por eso se monta directamente sobre /api.
- *
- * Actualmente /api/mail/health utiliza
- * MailService.verificarConexion(), que
- * comprueba la conexión con Brevo API.
+ * Por eso se monta directamente
+ * sobre /api.
  */
 app.use(
   "/api",
@@ -341,18 +360,10 @@ app.use(
    ========================================================== */
 
 /**
- * Health check simple para comprobar
- * que Render y Express están funcionando.
+ * Permite comprobar que:
  *
- * No consulta:
- *
- * - Supabase
- * - Brevo
- * - secretos
- *
- * Para Brevo existe:
- *
- * GET /api/mail/health
+ * - Render está levantado
+ * - Express está funcionando
  */
 app.get(
   "/api/health",
@@ -361,7 +372,7 @@ app.get(
     res
   ) => {
 
-    res.json({
+    return res.json({
       status:
         "ok",
 
@@ -383,7 +394,7 @@ app.get(
     res
   ) => {
 
-    res.json({
+    return res.json({
       name:
         "RIMBERIO API",
 
@@ -401,8 +412,8 @@ app.get(
 /**
  * IMPORTANTE:
  *
- * Esta ruta siempre debe quedar después
- * de todas las rutas reales.
+ * Debe quedar después de todas
+ * las rutas reales.
  */
 app.use(
   (
@@ -434,22 +445,15 @@ app.use(
     next
   ) => {
 
-    /*
-     * Registramos el error interno solamente
-     * en el backend.
-     *
-     * En producción no enviamos detalles
-     * internos al navegador.
-     */
     console.error(
       "Error no controlado:",
       error
     )
 
 
-    /* ----------------------------------------------------------
+    /* --------------------------------------------------------
        ARCHIVO DEMASIADO GRANDE
-       ---------------------------------------------------------- */
+       -------------------------------------------------------- */
 
     if (
       error?.code ===
@@ -458,7 +462,7 @@ app.use(
 
       return res
         .status(
-          400
+          413
         )
         .json({
           error:
@@ -467,9 +471,9 @@ app.use(
     }
 
 
-    /* ----------------------------------------------------------
+    /* --------------------------------------------------------
        FORMATO NO PERMITIDO
-       ---------------------------------------------------------- */
+       -------------------------------------------------------- */
 
     if (
       error?.message
@@ -489,9 +493,9 @@ app.use(
     }
 
 
-    /* ----------------------------------------------------------
+    /* --------------------------------------------------------
        CORS
-       ---------------------------------------------------------- */
+       -------------------------------------------------------- */
 
     if (
       error?.message ===
@@ -509,9 +513,9 @@ app.use(
     }
 
 
-    /* ----------------------------------------------------------
+    /* --------------------------------------------------------
        ERROR INTERNO
-       ---------------------------------------------------------- */
+       -------------------------------------------------------- */
 
     return res
       .status(
@@ -537,16 +541,6 @@ app.listen(
   port,
   () => {
 
-    /*
-     * Solo mostramos información necesaria.
-     *
-     * NO mostramos:
-     *
-     * PASSWORD_RESET_SECRET
-     * BREVO_API_KEY
-     * SUPABASE_SERVICE_KEY
-     * SMTP_PASS
-     */
     console.log(
       `RIMBERIO API disponible en puerto ${port}`
     )

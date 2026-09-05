@@ -22,20 +22,12 @@ const router = Router()
  * GET
  * /api/invitations/:token
  *
- * Esta ruta es PUBLICA.
- *
- * Sirve para que alguien pueda abrir
- * el enlace recibido por correo y ver:
- *
- * - proyecto
- * - rol
- * - quien lo invito
- * - fecha de expiracion
- *
- * aunque todavia no haya iniciado sesion.
+ * Ruta pública para consultar
+ * una invitación mediante su token.
  */
 router.get(
   "/invitations/:token",
+
   ProjectInvitationController
     .obtenerPublica
 )
@@ -49,7 +41,7 @@ router.get(
  * POST
  * /api/invitations/:token/accept
  *
- * Requiere iniciar sesion.
+ * Requiere autenticación.
  */
 router.post(
   "/invitations/:token/accept",
@@ -69,7 +61,7 @@ router.post(
  * POST
  * /api/invitations/:token/reject
  *
- * Requiere iniciar sesion.
+ * Requiere autenticación.
  */
 router.post(
   "/invitations/:token/reject",
@@ -89,16 +81,8 @@ router.post(
  * GET
  * /api/projects/:id/invitations
  *
- * Lista invitaciones:
- *
- * - pendientes
- * - aceptadas
- * - rechazadas
- * - revocadas
- * - expiradas
- *
- * Los permisos finales se comprueban
- * nuevamente dentro del modelo.
+ * Lista las invitaciones
+ * relacionadas con un proyecto.
  */
 router.get(
   "/projects/:id/invitations",
@@ -114,7 +98,10 @@ router.get(
  * POST
  * /api/projects/:id/invitations
  *
- * Crea y envia una invitacion.
+ * Crea y envía una invitación.
+ *
+ * El servicio de correo utiliza
+ * actualmente Brevo API.
  */
 router.post(
   "/projects/:id/invitations",
@@ -130,7 +117,7 @@ router.post(
  * DELETE
  * /api/projects/:id/invitations/:invitationId
  *
- * Revoca una invitacion pendiente.
+ * Revoca una invitación pendiente.
  */
 router.delete(
   "/projects/:id/invitations/:invitationId",
@@ -143,23 +130,25 @@ router.delete(
 
 
 /* ==========================================================
-   DIAGNOSTICO DEL CORREO
+   DIAGNOSTICO DEL SERVICIO DE CORREO
    ========================================================== */
 
 /**
  * GET
  * /api/mail/health
  *
- * Solo administrador general.
+ * Solo administrador.
  *
- * Comprueba que:
+ * Comprueba que el backend pueda
+ * comunicarse correctamente con
+ * el servicio de correo Brevo.
  *
- * - SMTP_HOST
- * - SMTP_PORT
- * - SMTP_USER
- * - SMTP_PASS
+ * No devuelve:
  *
- * esten funcionando correctamente.
+ * - BREVO_API_KEY
+ * - credenciales
+ * - contraseñas
+ * - información sensible
  */
 router.get(
   "/mail/health",
