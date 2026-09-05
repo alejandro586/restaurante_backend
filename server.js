@@ -10,6 +10,7 @@ import tareaRoutes from "./routes/tarea.routes.js"
 
 import courseRoutes from "./routes/course.routes.js"
 import adminUserRoutes from "./routes/admin-user.routes.js"
+import passwordResetRoutes from "./routes/password-reset.routes.js"
 
 import projectRoutes from "./routes/project.routes.js"
 import projectTaskRoutes from "./routes/project-task.routes.js"
@@ -218,6 +219,34 @@ app.use(
 app.use(
   "/api/admin/users",
   adminUserRoutes
+)
+
+
+/* ==========================================================
+   RECUPERACION DE CONTRASEÑA
+   ========================================================== */
+
+/**
+ * RUTAS PUBLICAS:
+ *
+ * POST /api/password-reset/request
+ * POST /api/password-reset/complete
+ *
+ * RUTAS DE ADMINISTRACION:
+ *
+ * GET  /api/password-reset/admin
+ * POST /api/password-reset/admin/:id/approve
+ * POST /api/password-reset/admin/:id/reject
+ *
+ * Las rutas administrativas se protegen dentro de
+ * password-reset.routes.js mediante:
+ *
+ * requireAuth
+ * requireAdmin
+ */
+app.use(
+  "/api/password-reset",
+  passwordResetRoutes
 )
 
 
