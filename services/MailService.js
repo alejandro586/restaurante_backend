@@ -545,6 +545,375 @@ Si no esperabas esta invitación, puedes ignorar este correo.
   }
 
   /**
+   * Genera la URL pública donde el usuario
+   * introduce su código y nueva contraseña.
+   *
+   * No colocamos el código en la URL.
+   */
+  crearUrlRestablecerPassword() {
+    const {
+      frontendUrl
+    } = this.obtenerConfiguracion()
+
+    const url =
+      new URL(
+        "/restablecer-password",
+        frontendUrl
+      )
+
+    return url.toString()
+  }
+
+  /**
+   * Envía el código de recuperación de contraseña.
+   *
+   * IMPORTANTE:
+   * - El administrador NO recibe el código.
+   * - El código solo se envía al correo del usuario.
+   * - Este método nunca registra el código en consola.
+   * - El código no se agrega a la URL.
+   */
+  async enviarCodigoRecuperacion({
+    email,
+    nombre,
+    codigo,
+    venceEnMinutos = 15
+  }) {
+    const correo =
+      String(
+        email || ""
+      )
+        .trim()
+        .toLowerCase()
+
+    const codigoFinal =
+      String(
+        codigo || ""
+      ).trim()
+
+    const minutos =
+      Number(
+        venceEnMinutos
+      )
+
+    if (
+      !correo ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        correo
+      )
+    ) {
+      throw new Error(
+        "Correo de recuperación no válido"
+      )
+    }
+
+    if (
+      !/^\d{6}$/.test(
+        codigoFinal
+      )
+    ) {
+      throw new Error(
+        "Código de recuperación no válido"
+      )
+    }
+
+    if (
+      !Number.isFinite(
+        minutos
+      ) ||
+      minutos <= 0
+    ) {
+      throw new Error(
+        "Tiempo de expiración no válido"
+      )
+    }
+
+    const config =
+      this.obtenerConfiguracion()
+
+    const transporter =
+      this.crearTransporter()
+
+    const from =
+      process.env.MAIL_FROM ||
+      `RIMBERIO <${config.user}>`
+
+    const nombreUsuario =
+      String(
+        nombre || "Usuario"
+      ).trim() ||
+      "Usuario"
+
+    const url =
+      this.crearUrlRestablecerPassword()
+
+    const subject =
+      "Código de recuperación | RIMBERIO"
+
+    const text = `
+Hola ${nombreUsuario},
+
+Un administrador autorizó tu solicitud para recuperar la contraseña de RIMBERIO.
+
+Tu código de recuperación es:
+
+${codigoFinal}
+
+Este código vence en ${minutos} minutos y solo puede utilizarse una vez.
+
+Ingresa el código y establece tu nueva contraseña aquí:
+${url}
+
+Si no solicitaste este cambio, puedes ignorar este correo.
+No compartas este código con nadie.
+    `.trim()
+
+    const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+  <title>Recuperación de contraseña | RIMBERIO</title>
+</head>
+
+<body
+  style="
+    margin:0;
+    padding:0;
+    background:#f6f2ee;
+    font-family:Arial,Helvetica,sans-serif;
+    color:#2e261f;
+  "
+>
+
+  <table
+    role="presentation"
+    width="100%"
+    cellspacing="0"
+    cellpadding="0"
+    style="
+      width:100%;
+      background:#f6f2ee;
+      padding:32px 16px;
+    "
+  >
+    <tr>
+      <td align="center">
+
+        <table
+          role="presentation"
+          width="100%"
+          cellspacing="0"
+          cellpadding="0"
+          style="
+            width:100%;
+            max-width:600px;
+            background:#ffffff;
+            border:1px solid #eadfd5;
+            border-radius:16px;
+            overflow:hidden;
+          "
+        >
+
+          <tr>
+            <td
+              style="
+                padding:24px 28px;
+                border-bottom:1px solid #eadfd5;
+              "
+            >
+              <div
+                style="
+                  font-size:20px;
+                  font-weight:700;
+                  letter-spacing:0.04em;
+                  color:#c1541f;
+                "
+              >
+                RIMBERIO
+              </div>
+
+              <div
+                style="
+                  margin-top:4px;
+                  font-size:13px;
+                  color:#8a796a;
+                "
+              >
+                Recuperación de contraseña
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td
+              style="
+                padding:32px 28px;
+              "
+            >
+              <h1
+                style="
+                  margin:0 0 14px;
+                  font-size:23px;
+                  line-height:1.3;
+                  color:#2e261f;
+                "
+              >
+                Recupera tu acceso
+              </h1>
+
+              <p
+                style="
+                  margin:0 0 22px;
+                  color:#6d5f53;
+                  font-size:15px;
+                  line-height:1.7;
+                "
+              >
+                Hola ${escaparHtml(
+                  nombreUsuario
+                )}. Un administrador autorizó tu solicitud para cambiar la contraseña de RIMBERIO.
+              </p>
+
+              <div
+                style="
+                  margin:26px 0;
+                  padding:22px 18px;
+                  background:#faf7f4;
+                  border:1px solid #eadfd5;
+                  border-radius:12px;
+                  text-align:center;
+                "
+              >
+                <div
+                  style="
+                    margin-bottom:8px;
+                    font-size:12px;
+                    color:#8a796a;
+                    letter-spacing:0.08em;
+                  "
+                >
+                  TU CÓDIGO
+                </div>
+
+                <div
+                  style="
+                    font-size:34px;
+                    line-height:1;
+                    font-weight:700;
+                    letter-spacing:0.18em;
+                    color:#2e261f;
+                  "
+                >
+                  ${escaparHtml(
+                    codigoFinal
+                  )}
+                </div>
+              </div>
+
+              <p
+                style="
+                  margin:0 0 22px;
+                  color:#6d5f53;
+                  font-size:14px;
+                  line-height:1.7;
+                "
+              >
+                Este código vence en
+                <strong>${escaparHtml(
+                  minutos
+                )} minutos</strong>
+                y solo puede utilizarse una vez.
+              </p>
+
+              <div
+                style="
+                  text-align:center;
+                  margin:28px 0;
+                "
+              >
+                <a
+                  href="${escaparHtml(
+                    url
+                  )}"
+                  style="
+                    display:inline-block;
+                    background:#c1541f;
+                    color:#ffffff;
+                    text-decoration:none;
+                    font-size:14px;
+                    font-weight:700;
+                    padding:13px 24px;
+                    border-radius:9px;
+                  "
+                >
+                  Ingresar código
+                </a>
+              </div>
+
+              <p
+                style="
+                  margin:22px 0 0;
+                  color:#8a796a;
+                  font-size:12px;
+                  line-height:1.6;
+                "
+              >
+                No compartas este código con nadie. El personal de RIMBERIO no necesita conocerlo para completar el cambio de contraseña.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td
+              style="
+                padding:18px 28px;
+                background:#faf7f4;
+                border-top:1px solid #eadfd5;
+                color:#8a796a;
+                font-size:11px;
+                line-height:1.6;
+              "
+            >
+              Si no solicitaste recuperar tu contraseña, puedes ignorar este mensaje.
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+    `.trim()
+
+    const resultado =
+      await transporter.sendMail({
+        from,
+        to: correo,
+        subject,
+        text,
+        html
+      })
+
+    return {
+      enviado: true,
+
+      messageId:
+        resultado.messageId,
+
+      email:
+        correo
+    }
+  }
+
+  /**
    * Sirve para comprobar la
    * configuración SMTP.
    *

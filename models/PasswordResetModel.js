@@ -4,23 +4,17 @@ import {
   adminClient
 } from "../config/supabase.js"
 
+import MailService from "../services/MailService.js"
+
 
 /* ==========================================================
    CONFIGURACION
    ========================================================== */
 
-const RESET_CODE_MINUTES =
-  15
-
-const MAX_ATTEMPTS =
-  5
-
-const MIN_PASSWORD_LENGTH =
-  8
-
-const MAX_PASSWORD_LENGTH =
-  128
-
+const RESET_CODE_MINUTES = 15
+const MAX_ATTEMPTS = 5
+const MIN_PASSWORD_LENGTH = 8
+const MAX_PASSWORD_LENGTH = 128
 
 const RESET_FIELDS = [
   "id",
@@ -39,7 +33,6 @@ const RESET_FIELDS = [
   "updated_at"
 ].join(",")
 
-
 const PROFILE_FIELDS = [
   "id",
   "email",
@@ -55,209 +48,104 @@ const PROFILE_FIELDS = [
    UTILIDADES
    ========================================================== */
 
-const normalizarCorreo =
-  (email) =>
-    String(
-      email ||
-      ""
-    )
-      .trim()
-      .toLowerCase()
+const normalizarCorreo = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase()
 
+const correoValido = (email) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    normalizarCorreo(email)
+  )
 
-const correoValido =
-  (email) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      .test(
-        normalizarCorreo(
-          email
-        )
-      )
+const idSolicitudValido = (id) => {
+  const numero = Number(id)
 
+  return (
+    Number.isInteger(numero) &&
+    numero > 0
+  )
+}
 
-const idSolicitudValido =
-  (id) => {
+const ahoraISO = () =>
+  new Date().toISOString()
 
-    const numero =
-      Number(
-        id
-      )
+const obtenerPasswordResetSecret = () => {
+  const secreto = String(
+    process.env.PASSWORD_RESET_SECRET || ""
+  ).trim()
 
-    return (
-      Number.isInteger(
-        numero
-      ) &&
-      numero >
-        0
+  if (secreto.length < 32) {
+    throw new Error(
+      "PASSWORD_RESET_SECRET no está configurado correctamente"
     )
   }
 
+  return secreto
+}
 
-const ahoraISO =
-  () =>
-    new Date()
-      .toISOString()
+const generarCodigo = () => {
+  const numero = crypto.randomInt(
+    0,
+    1000000
+  )
 
+  return String(numero).padStart(
+    6,
+    "0"
+  )
+}
 
-const obtenerPasswordResetSecret =
-  () => {
+const crearHashCodigo = (codigo) => {
+  const secreto =
+    obtenerPasswordResetSecret()
 
-    const secreto =
-      String(
-        process.env
-          .PASSWORD_RESET_SECRET ||
-        ""
-      ).trim()
-
-
-    /*
-     * No utilizaremos una clave demasiado corta.
-     *
-     * Más adelante configuraremos esta variable
-     * en Render.
-     */
-    if (
-      secreto.length <
-      32
-    ) {
-
-      throw new Error(
-        "PASSWORD_RESET_SECRET no está configurado correctamente"
-      )
-    }
-
-
-    return secreto
-  }
-
-
-/* ==========================================================
-   GENERAR CODIGO
-   ========================================================== */
-
-/**
- * Genera un código criptográficamente aleatorio
- * de exactamente seis números.
- *
- * Ejemplos:
- *
- * 029351
- * 482913
- * 901245
- */
-const generarCodigo =
-  () => {
-
-    const numero =
-      crypto.randomInt(
-        0,
-        1000000
-      )
-
-
-    return String(
-      numero
-    ).padStart(
-      6,
-      "0"
+  return crypto
+    .createHmac(
+      "sha256",
+      secreto
     )
+    .update(String(codigo))
+    .digest("hex")
+}
+
+const hashCoincide = (
+  hashGuardado,
+  hashRecibido
+) => {
+  if (
+    !hashGuardado ||
+    !hashRecibido
+  ) {
+    return false
   }
 
+  try {
+    const guardado = Buffer.from(
+      hashGuardado,
+      "hex"
+    )
 
-/* ==========================================================
-   HASH DEL CODIGO
-   ========================================================== */
-
-/**
- * El código real jamás se almacena en Supabase.
- *
- * Usamos HMAC-SHA256:
- *
- * codigo + PASSWORD_RESET_SECRET
- *
- * De esta forma una persona con acceso a la tabla
- * no puede simplemente probar los 1.000.000 códigos.
- */
-const crearHashCodigo =
-  (codigo) => {
-
-    const secreto =
-      obtenerPasswordResetSecret()
-
-
-    return crypto
-      .createHmac(
-        "sha256",
-        secreto
-      )
-      .update(
-        String(
-          codigo
-        )
-      )
-      .digest(
-        "hex"
-      )
-  }
-
-
-/* ==========================================================
-   COMPARACION SEGURA
-   ========================================================== */
-
-const hashCoincide =
-  (
-    hashGuardado,
-    hashRecibido
-  ) => {
+    const recibido = Buffer.from(
+      hashRecibido,
+      "hex"
+    )
 
     if (
-      !hashGuardado ||
-      !hashRecibido
+      guardado.length !==
+      recibido.length
     ) {
-
       return false
     }
 
-
-    try {
-
-      const guardado =
-        Buffer.from(
-          hashGuardado,
-          "hex"
-        )
-
-
-      const recibido =
-        Buffer.from(
-          hashRecibido,
-          "hex"
-        )
-
-
-      if (
-        guardado.length !==
-        recibido.length
-      ) {
-
-        return false
-      }
-
-
-      return crypto
-        .timingSafeEqual(
-          guardado,
-          recibido
-        )
-
-    } catch (
-      error
-    ) {
-
-      return false
-    }
+    return crypto.timingSafeEqual(
+      guardado,
+      recibido
+    )
+  } catch {
+    return false
   }
+}
 
 
 /* ==========================================================
@@ -265,17 +153,8 @@ const hashCoincide =
    ========================================================== */
 
 class PasswordResetModel {
-
   constructor() {
-
-    /*
-     * Utilizamos únicamente el Service Role
-     * en el backend.
-     *
-     * La clave nunca llega al navegador.
-     */
-    this.db =
-      adminClient()
+    this.db = adminClient()
   }
 
 
@@ -283,38 +162,23 @@ class PasswordResetModel {
      BUSCAR PERFIL POR CORREO
      ======================================================== */
 
-  async buscarPerfilPorCorreo(
-    email
-  ) {
-
+  async buscarPerfilPorCorreo(email) {
     const correo =
-      normalizarCorreo(
-        email
-      )
-
+      normalizarCorreo(email)
 
     const {
       data,
       error
     } =
       await this.db
-        .from(
-          "profiles"
-        )
-        .select(
-          PROFILE_FIELDS
-        )
-        .ilike(
-          "email",
-          correo
-        )
+        .from("profiles")
+        .select(PROFILE_FIELDS)
+        .ilike("email", correo)
         .maybeSingle()
-
 
     if (error) {
       throw error
     }
-
 
     return data
   }
@@ -324,32 +188,20 @@ class PasswordResetModel {
      BUSCAR PERFIL POR ID
      ======================================================== */
 
-  async buscarPerfil(
-    userId
-  ) {
-
+  async buscarPerfil(userId) {
     const {
       data,
       error
     } =
       await this.db
-        .from(
-          "profiles"
-        )
-        .select(
-          PROFILE_FIELDS
-        )
-        .eq(
-          "id",
-          userId
-        )
+        .from("profiles")
+        .select(PROFILE_FIELDS)
+        .eq("id", userId)
         .maybeSingle()
-
 
     if (error) {
       throw error
     }
-
 
     return data
   }
@@ -362,24 +214,16 @@ class PasswordResetModel {
   async marcarSolicitudesVencidas(
     email = null
   ) {
-
     let consulta =
       this.db
         .from(
           "password_reset_requests"
         )
         .update({
-          estado:
-            "vencido",
-
-          codigo_hash:
-            null,
-
-          expires_at:
-            null,
-
-          updated_at:
-            ahoraISO()
+          estado: "vencido",
+          codigo_hash: null,
+          expires_at: null,
+          updated_at: ahoraISO()
         })
         .eq(
           "estado",
@@ -390,26 +234,15 @@ class PasswordResetModel {
           ahoraISO()
         )
 
-
-    if (
-      email
-    ) {
-
-      consulta =
-        consulta.eq(
-          "email",
-          normalizarCorreo(
-            email
-          )
-        )
+    if (email) {
+      consulta = consulta.eq(
+        "email",
+        normalizarCorreo(email)
+      )
     }
 
-
-    const {
-      error
-    } =
+    const { error } =
       await consulta
-
 
     if (error) {
       throw error
@@ -424,16 +257,13 @@ class PasswordResetModel {
   async obtenerSolicitud(
     solicitudId
   ) {
-
     if (
       !idSolicitudValido(
         solicitudId
       )
     ) {
-
       return null
     }
-
 
     const {
       data,
@@ -443,22 +273,16 @@ class PasswordResetModel {
         .from(
           "password_reset_requests"
         )
-        .select(
-          RESET_FIELDS
-        )
+        .select(RESET_FIELDS)
         .eq(
           "id",
-          Number(
-            solicitudId
-          )
+          Number(solicitudId)
         )
         .maybeSingle()
-
 
     if (error) {
       throw error
     }
-
 
     return data
   }
@@ -468,61 +292,23 @@ class PasswordResetModel {
      SOLICITAR RECUPERACION
      ======================================================== */
 
-  /**
-   * Esta función es PUBLICA.
-   *
-   * El usuario todavía NO ha iniciado sesión.
-   *
-   * Recibe solamente su correo.
-   *
-   * IMPORTANTE:
-   *
-   * Si el correo no existe devolvemos igualmente "ok".
-   *
-   * El controlador nunca debe revelar:
-   *
-   * "Ese correo no existe"
-   *
-   * porque eso permitiría descubrir las cuentas
-   * registradas en RIMBERIO.
-   */
-  async solicitarRecuperacion(
-    email
-  ) {
-
+  async solicitarRecuperacion(email) {
     const correo =
-      normalizarCorreo(
-        email
-      )
-
+      normalizarCorreo(email)
 
     if (
       !correo ||
-      !correoValido(
-        correo
-      )
+      !correoValido(correo)
     ) {
-
       return {
-        tipo:
-          "invalid_email"
+        tipo: "invalid_email"
       }
     }
 
-
-    /*
-     * Antes de comprobar solicitudes activas
-     * marcamos como vencidas las antiguas.
-     */
     await this
       .marcarSolicitudesVencidas(
         correo
       )
-
-
-    /* ======================================================
-       BUSCAR USUARIO
-       ====================================================== */
 
     const perfil =
       await this
@@ -530,45 +316,26 @@ class PasswordResetModel {
           correo
         )
 
-
     /*
-     * RESPUESTA NEUTRA.
-     *
-     * No indicamos al frontend que el usuario
-     * realmente no existe.
+     * Respuesta neutra para no revelar
+     * si una cuenta existe o no.
      */
-    if (
-      !perfil
-    ) {
-
+    if (!perfil) {
       return {
-        tipo:
-          "ok",
-
-        solicitud_creada:
-          false
+        tipo: "ok",
+        solicitud_creada: false
       }
     }
 
-
-    /* ======================================================
-       BUSCAR SOLICITUD ACTIVA
-       ====================================================== */
-
     const {
-      data:
-        solicitudActiva,
-
-      error:
-        errorSolicitudActiva
+      data: solicitudActiva,
+      error: errorSolicitudActiva
     } =
       await this.db
         .from(
           "password_reset_requests"
         )
-        .select(
-          RESET_FIELDS
-        )
+        .select(RESET_FIELDS)
         .eq(
           "user_id",
           perfil.id
@@ -583,56 +350,27 @@ class PasswordResetModel {
         .order(
           "created_at",
           {
-            ascending:
-              false
+            ascending: false
           }
         )
-        .limit(
-          1
-        )
+        .limit(1)
         .maybeSingle()
 
-
-    if (
-      errorSolicitudActiva
-    ) {
-
+    if (errorSolicitudActiva) {
       throw errorSolicitudActiva
     }
 
-
-    /*
-     * Si ya existe una solicitud activa
-     * no creamos otra.
-     *
-     * La respuesta sigue siendo neutra.
-     */
-    if (
-      solicitudActiva
-    ) {
-
+    if (solicitudActiva) {
       return {
-        tipo:
-          "ok",
-
-        solicitud_creada:
-          false
+        tipo: "ok",
+        solicitud_creada: false
       }
     }
 
-
-    /* ======================================================
-       CREAR SOLICITUD
-       ====================================================== */
-
-    const fecha =
-      ahoraISO()
-
+    const fecha = ahoraISO()
 
     const {
-      data:
-        solicitud,
-
+      data: solicitud,
       error
     } =
       await this.db
@@ -640,70 +378,33 @@ class PasswordResetModel {
           "password_reset_requests"
         )
         .insert({
-          user_id:
-            perfil.id,
-
-          email:
-            correo,
-
-          estado:
-            "pendiente",
-
-          codigo_hash:
-            null,
-
-          expires_at:
-            null,
-
-          approved_by:
-            null,
-
-          approved_at:
-            null,
-
-          rejected_by:
-            null,
-
-          rejected_at:
-            null,
-
-          used_at:
-            null,
-
-          intentos:
-            0,
-
-          created_at:
-            fecha,
-
-          updated_at:
-            fecha
+          user_id: perfil.id,
+          email: correo,
+          estado: "pendiente",
+          codigo_hash: null,
+          expires_at: null,
+          approved_by: null,
+          approved_at: null,
+          rejected_by: null,
+          rejected_at: null,
+          used_at: null,
+          intentos: 0,
+          created_at: fecha,
+          updated_at: fecha
         })
-        .select(
-          RESET_FIELDS
-        )
+        .select(RESET_FIELDS)
         .single()
-
 
     if (error) {
       throw error
     }
 
-
     return {
-      tipo:
-        "ok",
-
-      solicitud_creada:
-        true,
-
+      tipo: "ok",
+      solicitud_creada: true,
       solicitud: {
-        id:
-          solicitud.id,
-
-        estado:
-          solicitud.estado,
-
+        id: solicitud.id,
+        estado: solicitud.estado,
         created_at:
           solicitud.created_at
       }
@@ -715,186 +416,109 @@ class PasswordResetModel {
      LISTAR SOLICITUDES
      ======================================================== */
 
-  /**
-   * Esta función será usada únicamente
-   * desde rutas protegidas para ADMIN.
-   */
   async listarSolicitudes({
     estado = null
   } = {}) {
-
     await this
       .marcarSolicitudesVencidas()
-
 
     let consulta =
       this.db
         .from(
           "password_reset_requests"
         )
-        .select(
-          RESET_FIELDS
-        )
+        .select(RESET_FIELDS)
         .order(
           "created_at",
           {
-            ascending:
-              false
+            ascending: false
           }
         )
-        .limit(
-          200
-        )
+        .limit(200)
 
-
-    if (
-      estado
-    ) {
-
-      consulta =
-        consulta.eq(
-          "estado",
-          String(
-            estado
-          )
-            .trim()
-            .toLowerCase()
-        )
+    if (estado) {
+      consulta = consulta.eq(
+        "estado",
+        String(estado)
+          .trim()
+          .toLowerCase()
+      )
     }
 
-
     const {
-      data:
-        solicitudes,
-
+      data: solicitudes,
       error
     } =
       await consulta
-
 
     if (error) {
       throw error
     }
 
-
     const lista =
-      solicitudes ||
-      []
-
+      solicitudes || []
 
     if (
-      lista.length ===
-      0
+      lista.length === 0
     ) {
-
       return []
     }
 
+    const ids = [
+      ...new Set(
+        lista
+          .flatMap(
+            (solicitud) => [
+              solicitud.user_id,
+              solicitud.approved_by,
+              solicitud.rejected_by
+            ]
+          )
+          .filter(Boolean)
+      )
+    ]
 
-    /* ======================================================
-       BUSCAR USUARIOS RELACIONADOS
-       ====================================================== */
+    let perfiles = []
 
-    const ids =
-      [
-        ...new Set(
-          lista
-            .flatMap(
-              (
-                solicitud
-              ) => [
-                solicitud.user_id,
-                solicitud.approved_by,
-                solicitud.rejected_by
-              ]
-            )
-            .filter(
-              Boolean
-            )
-        )
-      ]
-
-
-    let perfiles =
-      []
-
-
-    if (
-      ids.length >
-      0
-    ) {
-
+    if (ids.length > 0) {
       const {
         data,
-        error:
-          profilesError
+        error: profilesError
       } =
         await this.db
-          .from(
-            "profiles"
-          )
-          .select(
-            PROFILE_FIELDS
-          )
-          .in(
-            "id",
-            ids
-          )
+          .from("profiles")
+          .select(PROFILE_FIELDS)
+          .in("id", ids)
 
-
-      if (
-        profilesError
-      ) {
-
+      if (profilesError) {
         throw profilesError
       }
 
-
-      perfiles =
-        data ||
-        []
+      perfiles = data || []
     }
-
 
     const mapaPerfiles =
       new Map(
         perfiles.map(
-          (
-            perfil
-          ) => [
-            String(
-              perfil.id
-            ),
+          (perfil) => [
+            String(perfil.id),
             perfil
           ]
         )
       )
 
-
-    /* ======================================================
-       RESULTADO
-       ====================================================== */
-
     return lista.map(
-      (
-        solicitud
-      ) => ({
+      (solicitud) => ({
         ...solicitud,
 
-        /*
-         * Nunca devolvemos codigo_hash
-         * al frontend.
-         */
-        codigo_hash:
-          undefined,
+        codigo_hash: undefined,
 
         usuario:
           mapaPerfiles.get(
             String(
               solicitud.user_id
             )
-          ) ||
-          null,
+          ) || null,
 
         aprobado_por:
           solicitud.approved_by
@@ -902,8 +526,7 @@ class PasswordResetModel {
                 String(
                   solicitud.approved_by
                 )
-              ) ||
-              null
+              ) || null
             : null,
 
         rechazado_por:
@@ -912,8 +535,7 @@ class PasswordResetModel {
                 String(
                   solicitud.rejected_by
                 )
-              ) ||
-              null
+              ) || null
             : null
       })
     )
@@ -925,34 +547,27 @@ class PasswordResetModel {
      ======================================================== */
 
   /**
-   * El administrador NO establece la contraseña.
+   * El administrador solamente autoriza.
    *
-   * Solamente aprueba la recuperación.
+   * El backend genera un código de 6 dígitos,
+   * guarda únicamente su hash y envía el código
+   * automáticamente al correo del usuario.
    *
-   * RIMBERIO genera un código temporal.
-   *
-   * El código se devuelve UNA VEZ al administrador
-   * para que pueda entregárselo al usuario.
-   *
-   * En Supabase solamente almacenamos codigo_hash.
+   * El código NO se devuelve al administrador.
    */
   async aprobarSolicitud(
     solicitudId,
     adminId
   ) {
-
     if (
       !idSolicitudValido(
         solicitudId
       )
     ) {
-
       return {
-        tipo:
-          "invalid_id"
+        tipo: "invalid_id"
       }
     }
-
 
     const solicitud =
       await this
@@ -960,48 +575,30 @@ class PasswordResetModel {
           solicitudId
         )
 
-
-    if (
-      !solicitud
-    ) {
-
+    if (!solicitud) {
       return {
-        tipo:
-          "not_found"
+        tipo: "not_found"
       }
     }
-
 
     if (
       solicitud.estado ===
       "aprobado"
     ) {
-
       return {
-        tipo:
-          "already_approved"
+        tipo: "already_approved"
       }
     }
-
 
     if (
       solicitud.estado !==
       "pendiente"
     ) {
-
       return {
-        tipo:
-          "invalid_state",
-
-        estado:
-          solicitud.estado
+        tipo: "invalid_state",
+        estado: solicitud.estado
       }
     }
-
-
-    /* ======================================================
-       COMPROBAR USUARIO
-       ====================================================== */
 
     const perfil =
       await this
@@ -1009,61 +606,34 @@ class PasswordResetModel {
           solicitud.user_id
         )
 
-
-    if (
-      !perfil
-    ) {
-
+    if (!perfil) {
       return {
-        tipo:
-          "user_not_found"
+        tipo: "user_not_found"
       }
     }
-
-
-    /*
-     * Una cuenta desactivada puede recuperar
-     * la contraseña, pero seguirá sin poder
-     * ingresar hasta que un administrador
-     * vuelva a activarla.
-     *
-     * No reactivamos cuentas aquí.
-     */
-
-
-    /* ======================================================
-       GENERAR CODIGO
-       ====================================================== */
 
     const codigo =
       generarCodigo()
 
-
     const codigoHash =
-      crearHashCodigo(
-        codigo
-      )
-
+      crearHashCodigo(codigo)
 
     const fechaAprobacion =
       new Date()
 
-
     const fechaVencimiento =
       new Date(
         fechaAprobacion.getTime() +
-        (
           RESET_CODE_MINUTES *
-          60 *
-          1000
-        )
+            60 *
+            1000
       )
 
-
-    /* ======================================================
-       APROBAR
-       ====================================================== */
-
+    /*
+     * Reservamos la aprobación antes de enviar
+     * el correo para evitar que dos administradores
+     * generen dos códigos simultáneamente.
+     */
     const {
       data,
       error
@@ -1073,111 +643,150 @@ class PasswordResetModel {
           "password_reset_requests"
         )
         .update({
-          estado:
-            "aprobado",
-
-          codigo_hash:
-            codigoHash,
-
+          estado: "aprobado",
+          codigo_hash: codigoHash,
           expires_at:
             fechaVencimiento
               .toISOString(),
-
-          approved_by:
-            adminId,
-
+          approved_by: adminId,
           approved_at:
             fechaAprobacion
               .toISOString(),
-
-          rejected_by:
-            null,
-
-          rejected_at:
-            null,
-
-          used_at:
-            null,
-
-          intentos:
-            0,
-
+          rejected_by: null,
+          rejected_at: null,
+          used_at: null,
+          intentos: 0,
           updated_at:
             fechaAprobacion
               .toISOString()
         })
         .eq(
           "id",
-          Number(
-            solicitudId
-          )
+          Number(solicitudId)
         )
         .eq(
           "estado",
           "pendiente"
         )
-        .select(
-          RESET_FIELDS
-        )
+        .select(RESET_FIELDS)
         .maybeSingle()
-
 
     if (error) {
       throw error
     }
 
-
-    /*
-     * Si dos administradores intentaran
-     * aprobar exactamente al mismo tiempo,
-     * uno de ellos no actualizará ninguna fila.
-     */
-    if (
-      !data
-    ) {
-
+    if (!data) {
       return {
-        tipo:
-          "state_changed"
+        tipo: "state_changed"
       }
     }
 
+    let correoEnviado = null
 
-    /* ======================================================
-       RESULTADO
-       ====================================================== */
-
-    return {
-      tipo:
-        "ok",
-
-      solicitud: {
-        id:
-          data.id,
-
-        user_id:
-          data.user_id,
-
-        email:
-          data.email,
-
-        estado:
-          data.estado,
-
-        expires_at:
-          data.expires_at,
-
-        approved_at:
-          data.approved_at
-      },
+    try {
+      correoEnviado =
+        await MailService
+          .enviarCodigoRecuperacion({
+            email: data.email,
+            nombre:
+              perfil.full_name ||
+              perfil.email ||
+              "Usuario",
+            codigo,
+            venceEnMinutos:
+              RESET_CODE_MINUTES
+          })
+    } catch (mailError) {
+      console.error(
+        "No se pudo enviar el código de recuperación:",
+        mailError
+      )
 
       /*
-       * MUY IMPORTANTE:
-       *
-       * Este es el único momento en que
-       * el código real existe fuera del modelo.
+       * Si SMTP falla, la solicitud vuelve a pendiente
+       * y el código queda invalidado.
        */
-      codigo,
+      try {
+        const {
+          data: solicitudRestaurada,
+          error: rollbackError
+        } =
+          await this.db
+            .from(
+              "password_reset_requests"
+            )
+            .update({
+              estado: "pendiente",
+              codigo_hash: null,
+              expires_at: null,
+              approved_by: null,
+              approved_at: null,
+              rejected_by: null,
+              rejected_at: null,
+              used_at: null,
+              intentos: 0,
+              updated_at: ahoraISO()
+            })
+            .eq(
+              "id",
+              data.id
+            )
+            .eq(
+              "estado",
+              "aprobado"
+            )
+            .eq(
+              "approved_by",
+              adminId
+            )
+            .eq(
+              "codigo_hash",
+              codigoHash
+            )
+            .select("id,estado")
+            .maybeSingle()
+
+        if (rollbackError) {
+          throw rollbackError
+        }
+
+        if (!solicitudRestaurada) {
+          throw new Error(
+            "La solicitud cambió de estado antes de completar el rollback"
+          )
+        }
+      } catch (rollbackError) {
+        console.error(
+          "No se pudo restaurar la solicitud después del fallo de correo:",
+          rollbackError
+        )
+
+        throw new Error(
+          "No se pudo enviar el código y tampoco se pudo restaurar la solicitud"
+        )
+      }
+
+      return {
+        tipo: "mail_error"
+      }
+    }
+
+    return {
+      tipo: "ok",
+
+      solicitud: {
+        id: data.id,
+        user_id: data.user_id,
+        email: data.email,
+        estado: data.estado,
+        expires_at: data.expires_at,
+        approved_at: data.approved_at
+      },
+
+      email_enviado:
+        Boolean(
+          correoEnviado?.enviado
+        ),
 
       vence_en_minutos:
         RESET_CODE_MINUTES
@@ -1189,32 +798,19 @@ class PasswordResetModel {
      RECHAZAR SOLICITUD
      ======================================================== */
 
-  /**
-   * Permite rechazar:
-   *
-   * - pendiente
-   * - aprobado
-   *
-   * Si ya estaba aprobado, rechazarlo
-   * también invalida inmediatamente su código.
-   */
   async rechazarSolicitud(
     solicitudId,
     adminId
   ) {
-
     if (
       !idSolicitudValido(
         solicitudId
       )
     ) {
-
       return {
-        tipo:
-          "invalid_id"
+        tipo: "invalid_id"
       }
     }
-
 
     const solicitud =
       await this
@@ -1222,17 +818,11 @@ class PasswordResetModel {
           solicitudId
         )
 
-
-    if (
-      !solicitud
-    ) {
-
+    if (!solicitud) {
       return {
-        tipo:
-          "not_found"
+        tipo: "not_found"
       }
     }
-
 
     if (
       ![
@@ -1242,20 +832,13 @@ class PasswordResetModel {
         solicitud.estado
       )
     ) {
-
       return {
-        tipo:
-          "invalid_state",
-
-        estado:
-          solicitud.estado
+        tipo: "invalid_state",
+        estado: solicitud.estado
       }
     }
 
-
-    const fecha =
-      ahoraISO()
-
+    const fecha = ahoraISO()
 
     const {
       data,
@@ -1266,32 +849,17 @@ class PasswordResetModel {
           "password_reset_requests"
         )
         .update({
-          estado:
-            "rechazado",
-
-          codigo_hash:
-            null,
-
-          expires_at:
-            null,
-
-          rejected_by:
-            adminId,
-
-          rejected_at:
-            fecha,
-
-          used_at:
-            null,
-
-          updated_at:
-            fecha
+          estado: "rechazado",
+          codigo_hash: null,
+          expires_at: null,
+          rejected_by: adminId,
+          rejected_at: fecha,
+          used_at: null,
+          updated_at: fecha
         })
         .eq(
           "id",
-          Number(
-            solicitudId
-          )
+          Number(solicitudId)
         )
         .in(
           "estado",
@@ -1300,42 +868,25 @@ class PasswordResetModel {
             "aprobado"
           ]
         )
-        .select(
-          RESET_FIELDS
-        )
+        .select(RESET_FIELDS)
         .maybeSingle()
-
 
     if (error) {
       throw error
     }
 
-
-    if (
-      !data
-    ) {
-
+    if (!data) {
       return {
-        tipo:
-          "state_changed"
+        tipo: "state_changed"
       }
     }
 
-
     return {
-      tipo:
-        "ok",
-
+      tipo: "ok",
       solicitud: {
-        id:
-          data.id,
-
-        email:
-          data.email,
-
-        estado:
-          data.estado,
-
+        id: data.id,
+        email: data.email,
+        estado: data.estado,
         rejected_at:
           data.rejected_at
       }
@@ -1350,12 +901,8 @@ class PasswordResetModel {
   async buscarSolicitudAprobada(
     email
   ) {
-
     const correo =
-      normalizarCorreo(
-        email
-      )
-
+      normalizarCorreo(email)
 
     const {
       data,
@@ -1365,13 +912,8 @@ class PasswordResetModel {
         .from(
           "password_reset_requests"
         )
-        .select(
-          RESET_FIELDS
-        )
-        .eq(
-          "email",
-          correo
-        )
+        .select(RESET_FIELDS)
+        .eq("email", correo)
         .eq(
           "estado",
           "aprobado"
@@ -1379,20 +921,15 @@ class PasswordResetModel {
         .order(
           "approved_at",
           {
-            ascending:
-              false
+            ascending: false
           }
         )
-        .limit(
-          1
-        )
+        .limit(1)
         .maybeSingle()
-
 
     if (error) {
       throw error
     }
-
 
     return data
   }
@@ -1405,53 +942,31 @@ class PasswordResetModel {
   async registrarIntentoIncorrecto(
     solicitud
   ) {
-
     const intentos =
       Number(
-        solicitud.intentos ||
-        0
-      ) +
-      1
-
+        solicitud.intentos || 0
+      ) + 1
 
     const superoLimite =
-      intentos >=
-      MAX_ATTEMPTS
-
+      intentos >= MAX_ATTEMPTS
 
     const cambios = {
       intentos,
-
-      updated_at:
-        ahoraISO()
+      updated_at: ahoraISO()
     }
 
-
-    if (
-      superoLimite
-    ) {
-
-      cambios.estado =
-        "vencido"
-
-      cambios.codigo_hash =
-        null
-
-      cambios.expires_at =
-        null
+    if (superoLimite) {
+      cambios.estado = "vencido"
+      cambios.codigo_hash = null
+      cambios.expires_at = null
     }
 
-
-    const {
-      error
-    } =
+    const { error } =
       await this.db
         .from(
           "password_reset_requests"
         )
-        .update(
-          cambios
-        )
+        .update(cambios)
         .eq(
           "id",
           solicitud.id
@@ -1461,24 +976,19 @@ class PasswordResetModel {
           "aprobado"
         )
 
-
     if (error) {
       throw error
     }
 
-
     return {
       intentos,
-
       intentos_restantes:
         Math.max(
           0,
           MAX_ATTEMPTS -
-          intentos
+            intentos
         ),
-
-      vencido:
-        superoLimite
+      vencido: superoLimite
     }
   }
 
@@ -1487,115 +997,62 @@ class PasswordResetModel {
      COMPLETAR RECUPERACION
      ======================================================== */
 
-  /**
-   * Esta función también es PUBLICA.
-   *
-   * El usuario NO necesita iniciar sesión.
-   *
-   * Para utilizarla necesita:
-   *
-   * - correo
-   * - código autorizado
-   * - contraseña nueva
-   *
-   * Después de validar todo se cambia
-   * la contraseña en Supabase Auth.
-   */
   async completarRecuperacion({
     email,
     codigo,
     password
   }) {
-
     const correo =
-      normalizarCorreo(
-        email
-      )
-
+      normalizarCorreo(email)
 
     const codigoFinal =
-      String(
-        codigo ||
-        ""
-      ).trim()
-
+      String(codigo || "").trim()
 
     const nuevaPassword =
-      String(
-        password ||
-        ""
-      )
-
-
-    /* ======================================================
-       VALIDACIONES
-       ====================================================== */
+      String(password || "")
 
     if (
       !correo ||
-      !correoValido(
-        correo
-      )
+      !correoValido(correo)
     ) {
-
       return {
-        tipo:
-          "invalid_email"
+        tipo: "invalid_email"
       }
     }
 
-
     if (
-      !/^\d{6}$/
-        .test(
-          codigoFinal
-        )
+      !/^\d{6}$/.test(
+        codigoFinal
+      )
     ) {
-
       return {
         tipo:
           "invalid_code_format"
       }
     }
 
-
     if (
       nuevaPassword.length <
       MIN_PASSWORD_LENGTH
     ) {
-
       return {
-        tipo:
-          "password_too_short"
+        tipo: "password_too_short"
       }
     }
-
 
     if (
       nuevaPassword.length >
       MAX_PASSWORD_LENGTH
     ) {
-
       return {
-        tipo:
-          "password_too_long"
+        tipo: "password_too_long"
       }
     }
-
-
-    /* ======================================================
-       MARCAR EXPIRADAS
-       ====================================================== */
 
     await this
       .marcarSolicitudesVencidas(
         correo
       )
-
-
-    /* ======================================================
-       BUSCAR SOLICITUD APROBADA
-       ====================================================== */
 
     const solicitud =
       await this
@@ -1603,31 +1060,11 @@ class PasswordResetModel {
           correo
         )
 
-
-    /*
-     * Mensaje deliberadamente genérico.
-     *
-     * No indicamos si:
-     *
-     * - correo incorrecto
-     * - solicitud inexistente
-     * - solicitud rechazada
-     * - solicitud vencida
-     */
-    if (
-      !solicitud
-    ) {
-
+    if (!solicitud) {
       return {
-        tipo:
-          "invalid_or_expired"
+        tipo: "invalid_or_expired"
       }
     }
-
-
-    /* ======================================================
-       COMPROBAR VENCIMIENTO
-       ====================================================== */
 
     const vence =
       solicitud.expires_at
@@ -1635,7 +1072,6 @@ class PasswordResetModel {
             solicitud.expires_at
           )
         : null
-
 
     if (
       !vence ||
@@ -1645,69 +1081,51 @@ class PasswordResetModel {
       vence.getTime() <=
         Date.now()
     ) {
+      const {
+        error: expireError
+      } =
+        await this.db
+          .from(
+            "password_reset_requests"
+          )
+          .update({
+            estado: "vencido",
+            codigo_hash: null,
+            expires_at: null,
+            updated_at: ahoraISO()
+          })
+          .eq(
+            "id",
+            solicitud.id
+          )
+          .eq(
+            "estado",
+            "aprobado"
+          )
 
-      await this.db
-        .from(
-          "password_reset_requests"
-        )
-        .update({
-          estado:
-            "vencido",
-
-          codigo_hash:
-            null,
-
-          expires_at:
-            null,
-
-          updated_at:
-            ahoraISO()
-        })
-        .eq(
-          "id",
-          solicitud.id
-        )
-        .eq(
-          "estado",
-          "aprobado"
-        )
-
+      if (expireError) {
+        throw expireError
+      }
 
       return {
-        tipo:
-          "invalid_or_expired"
+        tipo: "invalid_or_expired"
       }
     }
-
-
-    /* ======================================================
-       LIMITE DE INTENTOS
-       ====================================================== */
 
     if (
       Number(
-        solicitud.intentos ||
-        0
-      ) >=
-      MAX_ATTEMPTS
+        solicitud.intentos || 0
+      ) >= MAX_ATTEMPTS
     ) {
-
       return {
-        tipo:
-          "max_attempts"
+        tipo: "max_attempts"
       }
     }
-
-
-    /* ======================================================
-       COMPROBAR CODIGO
-       ====================================================== */
 
     const hashRecibido =
       crearHashCodigo(
         codigoFinal
       )
-
 
     const codigoCorrecto =
       hashCoincide(
@@ -1715,45 +1133,26 @@ class PasswordResetModel {
         hashRecibido
       )
 
-
-    if (
-      !codigoCorrecto
-    ) {
-
+    if (!codigoCorrecto) {
       const intento =
         await this
           .registrarIntentoIncorrecto(
             solicitud
           )
 
-
-      if (
-        intento.vencido
-      ) {
-
+      if (intento.vencido) {
         return {
-          tipo:
-            "max_attempts",
-
-          intentos_restantes:
-            0
+          tipo: "max_attempts",
+          intentos_restantes: 0
         }
       }
 
-
       return {
-        tipo:
-          "invalid_code",
-
+        tipo: "invalid_code",
         intentos_restantes:
           intento.intentos_restantes
       }
     }
-
-
-    /* ======================================================
-       COMPROBAR QUE EL USUARIO SIGUE EXISTIENDO
-       ====================================================== */
 
     const perfil =
       await this
@@ -1761,71 +1160,39 @@ class PasswordResetModel {
           solicitud.user_id
         )
 
-
-    if (
-      !perfil
-    ) {
-
+    if (!perfil) {
       return {
-        tipo:
-          "invalid_or_expired"
+        tipo: "invalid_or_expired"
       }
     }
 
-
-    /* ======================================================
-       RESERVAR / CONSUMIR SOLICITUD
-       ====================================================== */
-
     /*
-     * Marcamos la solicitud como completada ANTES
-     * de modificar Auth.
-     *
-     * Esto evita que dos peticiones simultáneas
-     * utilicen el mismo código.
-     *
-     * Si Supabase Auth falla, restauraremos
-     * la solicitud a "aprobado".
+     * Reservamos/consumimos la solicitud antes
+     * de cambiar la contraseña para impedir que
+     * el mismo código se use simultáneamente.
      */
-
-    const fechaUso =
-      ahoraISO()
-
+    const fechaUso = ahoraISO()
 
     const hashAnterior =
       solicitud.codigo_hash
 
-
     const expiracionAnterior =
       solicitud.expires_at
 
-
     const {
-      data:
-        solicitudConsumida,
-
-      error:
-        consumirError
+      data: solicitudConsumida,
+      error: consumirError
     } =
       await this.db
         .from(
           "password_reset_requests"
         )
         .update({
-          estado:
-            "completado",
-
-          used_at:
-            fechaUso,
-
-          codigo_hash:
-            null,
-
-          expires_at:
-            null,
-
-          updated_at:
-            fechaUso
+          estado: "completado",
+          used_at: fechaUso,
+          codigo_hash: null,
+          expires_at: null,
+          updated_at: fechaUso
         })
         .eq(
           "id",
@@ -1835,41 +1202,22 @@ class PasswordResetModel {
           "estado",
           "aprobado"
         )
-        .select(
-          RESET_FIELDS
-        )
+        .select(RESET_FIELDS)
         .maybeSingle()
 
-
-    if (
-      consumirError
-    ) {
-
+    if (consumirError) {
       throw consumirError
     }
 
-
-    if (
-      !solicitudConsumida
-    ) {
-
+    if (!solicitudConsumida) {
       return {
-        tipo:
-          "already_used"
+        tipo: "already_used"
       }
     }
 
-
-    /* ======================================================
-       CAMBIAR CONTRASEÑA EN SUPABASE AUTH
-       ====================================================== */
-
     const {
-      data:
-        authData,
-
-      error:
-        authError
+      data: authData,
+      error: authError
     } =
       await this.db
         .auth
@@ -1882,93 +1230,60 @@ class PasswordResetModel {
           }
         )
 
-
-    /* ======================================================
-       ROLLBACK SI AUTH FALLA
-       ====================================================== */
-
     if (
       authError ||
       !authData?.user
     ) {
-
-      /*
-       * Intentamos restaurar la solicitud
-       * para que el usuario pueda volver
-       * a intentarlo con el mismo código.
-       */
       try {
+        const {
+          error: rollbackError
+        } =
+          await this.db
+            .from(
+              "password_reset_requests"
+            )
+            .update({
+              estado: "aprobado",
+              used_at: null,
+              codigo_hash:
+                hashAnterior,
+              expires_at:
+                expiracionAnterior,
+              updated_at: ahoraISO()
+            })
+            .eq(
+              "id",
+              solicitud.id
+            )
+            .eq(
+              "estado",
+              "completado"
+            )
 
-        await this.db
-          .from(
-            "password_reset_requests"
-          )
-          .update({
-            estado:
-              "aprobado",
-
-            used_at:
-              null,
-
-            codigo_hash:
-              hashAnterior,
-
-            expires_at:
-              expiracionAnterior,
-
-            updated_at:
-              ahoraISO()
-          })
-          .eq(
-            "id",
-            solicitud.id
-          )
-          .eq(
-            "estado",
-            "completado"
-          )
-
-      } catch (
-        rollbackError
-      ) {
-
+        if (rollbackError) {
+          throw rollbackError
+        }
+      } catch (rollbackError) {
         console.error(
           "No se pudo restaurar la solicitud de recuperación:",
           rollbackError
         )
       }
 
-
-      if (
-        authError
-      ) {
-
+      if (authError) {
         throw authError
       }
-
 
       throw new Error(
         "Supabase no pudo actualizar la contraseña"
       )
     }
 
-
-    /* ======================================================
-       RESULTADO
-       ====================================================== */
-
     return {
-      tipo:
-        "ok",
-
-      user_id:
-        solicitud.user_id,
-
-      email:
-        correo,
-
-      completed_at:
-        fechaUso
+      tipo: "ok",
+      user_id: solicitud.user_id,
+      email: correo,
+      completed_at: fechaUso
     }
   }
 }
@@ -1980,6 +1295,5 @@ export {
   MIN_PASSWORD_LENGTH,
   MAX_PASSWORD_LENGTH
 }
-
 
 export default PasswordResetModel

@@ -71,6 +71,7 @@ const idSolicitudValido =
  * - hashes
  * - PASSWORD_RESET_SECRET
  * - contraseñas
+ * - códigos de recuperación
  *
  * El error real solamente queda en
  * los logs del backend.
@@ -204,7 +205,7 @@ class PasswordResetController {
       return sendError(
         res,
         error,
-        "No se pudo enviar la solicitud de recuperación"
+        "No se pudo registrar la solicitud de recuperación"
       )
     }
   }
@@ -217,7 +218,7 @@ class PasswordResetController {
 
   /**
    * GET
-   * /api/admin/password-resets
+   * /api/password-reset/admin
    *
    * Requiere:
    *
@@ -312,14 +313,22 @@ class PasswordResetController {
 
   /**
    * POST
-   * /api/admin/password-resets/:id/approve
+   * /api/password-reset/admin/:id/approve
    *
    * El administrador NO elige
-   * la contraseña.
+   * la contraseña ni ve el código.
    *
    * Solamente autoriza.
    *
-   * RIMBERIO genera el código temporal.
+   * El backend:
+   *
+   * 1. genera un código temporal;
+   * 2. guarda únicamente su hash;
+   * 3. envía el código automáticamente
+   *    al correo del usuario.
+   *
+   * Si el correo falla, el modelo intenta
+   * devolver la solicitud a "pendiente".
    */
   async aprobar(
     req,
@@ -461,7 +470,7 @@ class PasswordResetController {
               false,
 
             error:
-              "Esta solicitud ya fue aprobada"
+              "Esta solicitud ya fue aprobada. El código ya fue enviado al correo del usuario."
           })
       }
 
@@ -536,6 +545,29 @@ class PasswordResetController {
 
 
       /* ====================================================
+         ERROR DE CORREO
+         ==================================================== */
+
+      if (
+        resultado.tipo ===
+        "mail_error"
+      ) {
+
+        return res
+          .status(
+            502
+          )
+          .json({
+            ok:
+              false,
+
+            error:
+              "No se pudo enviar el código al correo del usuario. La solicitud permanece pendiente y puedes intentarlo nuevamente."
+          })
+      }
+
+
+      /* ====================================================
          ERROR INESPERADO DEL MODELO
          ==================================================== */
 
@@ -563,32 +595,30 @@ class PasswordResetController {
          ==================================================== */
 
       /*
-       * IMPORTANTE:
+       * MUY IMPORTANTE:
        *
-       * El código real se devuelve únicamente
-       * en esta respuesta.
+       * El código NO se devuelve aquí.
        *
-       * No está almacenado en texto plano
-       * en Supabase.
+       * El administrador solamente recibe
+       * confirmación de que fue enviado al
+       * correo del usuario.
        */
       return res.json({
         ok:
           true,
 
         mensaje:
-          "Solicitud aprobada correctamente",
+          "Solicitud aprobada. El código de recuperación fue enviado automáticamente al correo del usuario.",
 
         solicitud:
           resultado.solicitud,
 
-        codigo:
-          resultado.codigo,
+        email_enviado:
+          resultado.email_enviado ===
+          true,
 
         vence_en_minutos:
-          resultado.vence_en_minutos,
-
-        advertencia:
-          "Copia este código ahora. Se mostrará únicamente al aprobar la recuperación."
+          resultado.vence_en_minutos
       })
 
     } catch (
@@ -611,7 +641,7 @@ class PasswordResetController {
 
   /**
    * POST
-   * /api/admin/password-resets/:id/reject
+   * /api/password-reset/admin/:id/reject
    *
    * Puede rechazar:
    *
@@ -868,7 +898,7 @@ class PasswordResetController {
 
     const password =
       String(
-        req.body?.password ||
+        req.body?.password ??
         ""
       )
 
@@ -1289,6 +1319,7 @@ class PasswordResetController {
        * user_id
        * contraseña
        * token
+       * código
        *
        * El usuario debe volver al login
        * e iniciar sesión normalmente.
