@@ -24,289 +24,289 @@ class UserAdminController {
 
 
   /* ==========================================================
-   CREAR USUARIO
-   ========================================================== */
+     CREAR USUARIO
+     ========================================================== */
 
-static async crearUsuario(
-  req,
-  res
-) {
+  async crearUsuario(
+    req,
+    res
+  ) {
 
-  try {
+    try {
 
-    /* ======================================================
-       DATOS RECIBIDOS
-       ====================================================== */
+      /* ======================================================
+         DATOS RECIBIDOS
+         ====================================================== */
 
-    const {
-      email,
-      password,
-      full_name,
-      fullName,
-      empresa
-    } =
-      req.body || {}
-
-
-    /*
-     * Aceptamos full_name y fullName
-     * para evitar problemas entre frontend
-     * y backend.
-     */
-    const nombre =
-      String(
-        full_name ||
-        fullName ||
-        ""
-      ).trim()
+      const {
+        email,
+        password,
+        full_name,
+        fullName,
+        empresa
+      } =
+        req.body || {}
 
 
-    const correo =
-      String(
-        email || ""
-      )
-        .trim()
-        .toLowerCase()
+      /*
+       * Aceptamos full_name y fullName
+       * para evitar problemas entre frontend
+       * y backend.
+       */
+      const nombre =
+        String(
+          full_name ||
+          fullName ||
+          ""
+        ).trim()
 
 
-    const empresaFinal =
-      String(
-        empresa || ""
-      ).trim()
+      const correo =
+        String(
+          email || ""
+        )
+          .trim()
+          .toLowerCase()
 
 
-    /* ======================================================
-       VALIDACIONES
-       ====================================================== */
-
-    if (!nombre) {
-
-      return res
-        .status(400)
-        .json({
-          error:
-            "El nombre completo es obligatorio"
-        })
-    }
+      const empresaFinal =
+        String(
+          empresa || ""
+        ).trim()
 
 
-    if (!correo) {
+      /* ======================================================
+         VALIDACIONES
+         ====================================================== */
 
-      return res
-        .status(400)
-        .json({
-          error:
-            "El correo es obligatorio"
-        })
-    }
+      if (!nombre) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "El nombre completo es obligatorio"
+          })
+      }
 
 
-    /*
-     * Validación sencilla del formato.
-     *
-     * Supabase también validará el correo,
-     * pero así podemos devolver un mensaje
-     * más claro.
-     */
-    const emailValido =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        .test(
-          correo
+      if (!correo) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "El correo es obligatorio"
+          })
+      }
+
+
+      /*
+       * Validación sencilla del formato.
+       *
+       * Supabase también validará el correo,
+       * pero así podemos devolver un mensaje
+       * más claro.
+       */
+      const emailValido =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          .test(
+            correo
+          )
+
+
+      if (!emailValido) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "Ingresa un correo electrónico válido"
+          })
+      }
+
+
+      if (!password) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "La contraseña es obligatoria"
+          })
+      }
+
+
+      if (
+        String(
+          password
+        ).length <
+        8
+      ) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "La contraseña debe tener al menos 8 caracteres"
+          })
+      }
+
+
+      if (!empresaFinal) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "La empresa es obligatoria"
+          })
+      }
+
+
+      /* ======================================================
+         CREAR USUARIO
+         ====================================================== */
+
+      const model =
+        new UserAdminModel(
+          req.user
         )
 
 
-    if (!emailValido) {
+      const usuario =
+        await model
+          .crearUsuario({
+            email:
+              correo,
+
+            password:
+              String(
+                password
+              ),
+
+            fullName:
+              nombre,
+
+            empresa:
+              empresaFinal
+          })
+
+
+      /* ======================================================
+         RESPUESTA
+         ====================================================== */
 
       return res
-        .status(400)
+        .status(201)
         .json({
-          error:
-            "Ingresa un correo electrónico válido"
+
+          mensaje:
+            "Usuario registrado correctamente",
+
+          usuario
+
         })
-    }
 
+    } catch (error) {
 
-    if (!password) {
-
-      return res
-        .status(400)
-        .json({
-          error:
-            "La contraseña es obligatoria"
-        })
-    }
-
-
-    if (
-      String(
-        password
-      ).length <
-      8
-    ) {
-
-      return res
-        .status(400)
-        .json({
-          error:
-            "La contraseña debe tener al menos 8 caracteres"
-        })
-    }
-
-
-    if (!empresaFinal) {
-
-      return res
-        .status(400)
-        .json({
-          error:
-            "La empresa es obligatoria"
-        })
-    }
-
-
-    /* ======================================================
-       CREAR USUARIO
-       ====================================================== */
-
-    const model =
-      new UserAdminModel(
-        req.user
+      console.error(
+        "Error creando usuario:",
+        error
       )
 
 
-    const usuario =
-      await model
-        .crearUsuario({
-          email:
-            correo,
-
-          password:
-            String(
-              password
-            ),
-
-          fullName:
-            nombre,
-
-          empresa:
-            empresaFinal
-        })
+      const mensaje =
+        String(
+          error?.message ||
+          ""
+        )
 
 
-    /* ======================================================
-       RESPUESTA
-       ====================================================== */
-
-    return res
-      .status(201)
-      .json({
-
-        mensaje:
-          "Usuario registrado correctamente",
-
-        usuario
-
-      })
-
-  } catch (error) {
-
-    console.error(
-      "Error creando usuario:",
-      error
-    )
+      const mensajeLower =
+        mensaje.toLowerCase()
 
 
-    const mensaje =
-      String(
-        error?.message ||
-        ""
-      )
+      /* ======================================================
+         CORREO DUPLICADO
+         ====================================================== */
+
+      if (
+        mensajeLower.includes(
+          "ya está registrado"
+        ) ||
+        mensajeLower.includes(
+          "already registered"
+        ) ||
+        mensajeLower.includes(
+          "already been registered"
+        ) ||
+        mensajeLower.includes(
+          "user already"
+        )
+      ) {
+
+        return res
+          .status(409)
+          .json({
+            error:
+              "Ese correo ya está registrado en RIMBERIO"
+          })
+      }
 
 
-    const mensajeLower =
-      mensaje.toLowerCase()
+      /* ======================================================
+         CORREO INVALIDO
+         ====================================================== */
+
+      if (
+        mensajeLower.includes(
+          "invalid email"
+        )
+      ) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "El correo electrónico no es válido"
+          })
+      }
 
 
-    /* ======================================================
-       CORREO DUPLICADO
-       ====================================================== */
+      /* ======================================================
+         CONTRASEÑA
+         ====================================================== */
 
-    if (
-      mensajeLower.includes(
-        "ya está registrado"
-      ) ||
-      mensajeLower.includes(
-        "already registered"
-      ) ||
-      mensajeLower.includes(
-        "already been registered"
-      ) ||
-      mensajeLower.includes(
-        "user already"
-      )
-    ) {
+      if (
+        mensajeLower.includes(
+          "password"
+        )
+      ) {
 
-      return res
-        .status(409)
-        .json({
-          error:
-            "Ese correo ya está registrado en RIMBERIO"
-        })
-    }
+        return res
+          .status(400)
+          .json({
+            error:
+              mensaje ||
+              "La contraseña no cumple los requisitos"
+          })
+      }
 
 
-    /* ======================================================
-       CORREO INVALIDO
-       ====================================================== */
-
-    if (
-      mensajeLower.includes(
-        "invalid email"
-      )
-    ) {
+      /* ======================================================
+         ERROR GENERAL
+         ====================================================== */
 
       return res
-        .status(400)
-        .json({
-          error:
-            "El correo electrónico no es válido"
-        })
-    }
-
-
-    /* ======================================================
-       CONTRASEÑA
-       ====================================================== */
-
-    if (
-      mensajeLower.includes(
-        "password"
-      )
-    ) {
-
-      return res
-        .status(400)
+        .status(500)
         .json({
           error:
             mensaje ||
-            "La contraseña no cumple los requisitos"
+            "No se pudo registrar el usuario"
         })
     }
-
-
-    /* ======================================================
-       ERROR GENERAL
-       ====================================================== */
-
-    return res
-      .status(500)
-      .json({
-        error:
-          mensaje ||
-          "No se pudo registrar el usuario"
-      })
   }
-}
 
 
 
@@ -916,6 +916,11 @@ const controller =
 
 
 export default {
+
+  crearUsuario:
+    controller
+      .crearUsuario
+      .bind(controller),
 
   listarUsuarios:
     controller
