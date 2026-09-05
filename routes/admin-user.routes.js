@@ -22,16 +22,17 @@ const router =
 /**
  * Todas las rutas de este archivo requieren:
  *
- * 1. sesión válida
- * 2. rol administrador
+ * 1. Sesión válida.
+ * 2. Usuario activo.
+ * 3. Rol administrador.
  *
- * Por tanto un usuario normal no puede:
+ * requireAuth:
+ * - valida el token
+ * - obtiene el perfil real
+ * - bloquea cuentas desactivadas
  *
- * - registrar usuarios
- * - consultar todos los usuarios
- * - activar o desactivar usuarios
- * - modificar cursos
- * - modificar módulos
+ * requireAdmin:
+ * - permite únicamente administradores
  */
 router.use(
   requireAuth,
@@ -51,9 +52,7 @@ router.use(
  * - cuenta en Supabase Auth
  * - registro en profiles
  *
- * El nuevo usuario comienza con:
- *
- * activo = true
+ * El usuario se crea inicialmente activo.
  *
  * Body:
  *
@@ -77,8 +76,8 @@ router.post(
 /**
  * GET /api/admin/users/catalog
  *
- * Devuelve los cursos y módulos disponibles
- * para poder asignarlos a los usuarios.
+ * Devuelve todos los cursos y módulos
+ * disponibles para asignación.
  */
 router.get(
   "/catalog",
@@ -93,11 +92,17 @@ router.get(
 /**
  * GET /api/admin/users
  *
- * Lista los usuarios registrados en RIMBERIO.
+ * Lista todos los usuarios registrados.
  *
- * Ahora cada perfil también puede devolver:
+ * Incluye:
  *
- * activo: true / false
+ * - id
+ * - email
+ * - full_name
+ * - role
+ * - empresa
+ * - activo
+ * - created_at
  */
 router.get(
   "/",
@@ -113,9 +118,6 @@ router.get(
  * PATCH
  * /api/admin/users/:userId/status
  *
- * Permite activar o desactivar una cuenta
- * sin eliminar al usuario.
- *
  * DESACTIVAR:
  *
  * {
@@ -128,22 +130,15 @@ router.get(
  *   "activo": true
  * }
  *
- * IMPORTANTE:
+ * No elimina:
  *
- * - no elimina la cuenta de Supabase Auth
- * - no elimina cursos
- * - no elimina módulos
- * - no elimina permisos
- * - no elimina CSV
- * - no elimina proyectos
- * - no elimina historial
- *
- * Solamente cambia:
- *
- * profiles.activo
- *
- * Las cuentas administradoras están
- * protegidas por el controlador/modelo.
+ * - datos
+ * - cursos
+ * - módulos
+ * - permisos
+ * - CSV
+ * - proyectos
+ * - historial
  */
 router.patch(
   "/:userId/status",
@@ -156,7 +151,8 @@ router.patch(
    ========================================================== */
 
 /**
- * GET /api/admin/users/:userId/permissions
+ * GET
+ * /api/admin/users/:userId/permissions
  *
  * Devuelve:
  *
@@ -176,6 +172,8 @@ router.get(
 /**
  * POST
  * /api/admin/users/:userId/courses/:courseId
+ *
+ * Habilita el curso para el usuario.
  */
 router.post(
   "/:userId/courses/:courseId",
@@ -191,8 +189,8 @@ router.post(
  * DELETE
  * /api/admin/users/:userId/courses/:courseId
  *
- * Al retirar un curso también se desactivan
- * sus módulos para ese usuario.
+ * Al retirar el curso también se
+ * desactivan sus módulos para ese usuario.
  */
 router.delete(
   "/:userId/courses/:courseId",
@@ -208,9 +206,8 @@ router.delete(
  * POST
  * /api/admin/users/:userId/modules/:moduleId
  *
- * Si el usuario todavía no tiene asignado
- * el curso padre, el modelo lo asigna
- * automáticamente.
+ * Si todavía no tiene el curso padre,
+ * UserAdminModel lo asigna automáticamente.
  */
 router.post(
   "/:userId/modules/:moduleId",
@@ -233,23 +230,59 @@ router.delete(
 
 
 /* ==========================================================
+   ACTUALIZAR DATOS DEL USUARIO
+   ========================================================== */
+
+/**
+ * PATCH
+ * /api/admin/users/:userId
+ *
+ * Permite editar:
+ *
+ * - nombre completo
+ * - empresa
+ *
+ * Body:
+ *
+ * {
+ *   "full_name": "Juan Carlos Perez",
+ *   "empresa": "RIMBERIO"
+ * }
+ *
+ * NO modifica:
+ *
+ * - email
+ * - contraseña
+ * - rol
+ * - estado activo
+ * - cursos
+ * - módulos
+ * - permisos
+ */
+router.patch(
+  "/:userId",
+  UserAdminController.actualizarUsuario
+)
+
+
+/* ==========================================================
    OBTENER UN USUARIO
    ========================================================== */
 
 /**
+ * GET
+ * /api/admin/users/:userId
+ *
  * IMPORTANTE:
  *
- * Esta ruta debe quedar al final porque:
+ * Esta ruta genérica queda al final
+ * después de las rutas específicas:
  *
  * /catalog
  * /:userId/status
  * /:userId/permissions
  * /:userId/courses/...
  * /:userId/modules/...
- *
- * son rutas más específicas.
- *
- * GET /api/admin/users/:userId
  */
 router.get(
   "/:userId",

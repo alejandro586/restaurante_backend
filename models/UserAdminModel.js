@@ -398,6 +398,178 @@ class UserAdminModel {
 
 
   /* ==========================================================
+     ACTUALIZAR USUARIO
+     ========================================================== */
+
+  /**
+   * Modifica únicamente los datos administrativos
+   * básicos del perfil.
+   *
+   * Se puede modificar:
+   *
+   * - nombre completo
+   * - empresa
+   *
+   * NO modifica:
+   *
+   * - correo
+   * - contraseña
+   * - rol
+   * - estado activo
+   * - cursos
+   * - módulos
+   * - permisos
+   * - CSV
+   * - proyectos
+   * - historial
+   *
+   * IMPORTANTE:
+   *
+   * Cambiar la empresa puede cambiar qué datasets
+   * internos compartidos puede consultar el usuario,
+   * ya que los CSV propios se comparten por empresa.
+   */
+  async actualizarUsuario(
+    userId,
+    {
+      fullName,
+      empresa
+    }
+  ) {
+
+    /* ========================================================
+       BUSCAR USUARIO
+       ======================================================== */
+
+    const perfil =
+      await this.buscarPerfil(
+        userId
+      )
+
+
+    if (!perfil) {
+      return {
+        tipo:
+          "user_not_found"
+      }
+    }
+
+
+    /* ========================================================
+       NORMALIZAR DATOS
+       ======================================================== */
+
+    const nombre =
+      String(
+        fullName || ""
+      ).trim()
+
+
+    const empresaFinal =
+      String(
+        empresa || ""
+      ).trim()
+
+
+    /* ========================================================
+       VALIDAR NOMBRE
+       ======================================================== */
+
+    if (!nombre) {
+      return {
+        tipo:
+          "invalid_name"
+      }
+    }
+
+
+    /* ========================================================
+       VALIDAR EMPRESA
+       ======================================================== */
+
+    if (!empresaFinal) {
+      return {
+        tipo:
+          "invalid_company"
+      }
+    }
+
+
+    /* ========================================================
+       EVITAR VALORES EXCESIVAMENTE GRANDES
+       ======================================================== */
+
+    if (
+      nombre.length >
+      150
+    ) {
+      return {
+        tipo:
+          "name_too_long"
+      }
+    }
+
+
+    if (
+      empresaFinal.length >
+      150
+    ) {
+      return {
+        tipo:
+          "company_too_long"
+      }
+    }
+
+
+    /* ========================================================
+       ACTUALIZAR PERFIL
+       ======================================================== */
+
+    const {
+      data,
+      error
+    } =
+      await this.db
+        .from(
+          "profiles"
+        )
+        .update({
+          full_name:
+            nombre,
+
+          empresa:
+            empresaFinal
+        })
+        .eq(
+          "id",
+          userId
+        )
+        .select(
+          PROFILE_FIELDS
+        )
+        .single()
+
+
+    if (error) {
+      throw error
+    }
+
+
+    /* ========================================================
+       RESULTADO
+       ======================================================== */
+
+    return {
+      tipo:
+        "ok",
+
+      usuario:
+        data
+    }
+  }
+
+
+  /* ==========================================================
      CAMBIAR ESTADO DEL USUARIO
      ========================================================== */
 

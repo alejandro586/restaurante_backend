@@ -34,10 +34,6 @@ class UserAdminController {
 
     try {
 
-      /* ======================================================
-         DATOS RECIBIDOS
-         ====================================================== */
-
       const {
         email,
         password,
@@ -48,11 +44,6 @@ class UserAdminController {
         req.body || {}
 
 
-      /*
-       * Aceptamos full_name y fullName
-       * para evitar problemas entre frontend
-       * y backend.
-       */
       const nombre =
         String(
           full_name ||
@@ -74,10 +65,6 @@ class UserAdminController {
           empresa || ""
         ).trim()
 
-
-      /* ======================================================
-         VALIDACIONES
-         ====================================================== */
 
       if (!nombre) {
 
@@ -101,13 +88,6 @@ class UserAdminController {
       }
 
 
-      /*
-       * Validación sencilla del formato.
-       *
-       * Supabase también validará el correo,
-       * pero así podemos devolver un mensaje
-       * más claro.
-       */
       const emailValido =
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/
           .test(
@@ -164,10 +144,6 @@ class UserAdminController {
       }
 
 
-      /* ======================================================
-         CREAR USUARIO
-         ====================================================== */
-
       const model =
         new UserAdminModel(
           req.user
@@ -192,10 +168,6 @@ class UserAdminController {
               empresaFinal
           })
 
-
-      /* ======================================================
-         RESPUESTA
-         ====================================================== */
 
       return res
         .status(201)
@@ -227,10 +199,6 @@ class UserAdminController {
         mensaje.toLowerCase()
 
 
-      /* ======================================================
-         CORREO DUPLICADO
-         ====================================================== */
-
       if (
         mensajeLower.includes(
           "ya está registrado"
@@ -255,10 +223,6 @@ class UserAdminController {
       }
 
 
-      /* ======================================================
-         CORREO INVALIDO
-         ====================================================== */
-
       if (
         mensajeLower.includes(
           "invalid email"
@@ -273,10 +237,6 @@ class UserAdminController {
           })
       }
 
-
-      /* ======================================================
-         CONTRASEÑA
-         ====================================================== */
 
       if (
         mensajeLower.includes(
@@ -294,10 +254,6 @@ class UserAdminController {
       }
 
 
-      /* ======================================================
-         ERROR GENERAL
-         ====================================================== */
-
       return res
         .status(500)
         .json({
@@ -309,25 +265,27 @@ class UserAdminController {
   }
 
 
-
-
   /* ==========================================================
-     GET /api/admin/users
+     LISTAR USUARIOS
      ========================================================== */
 
-  /**
-   * Lista todos los usuarios registrados
-   * en RIMBERIO.
-   *
-   * Esta ruta sera exclusiva para ADMIN.
-   */
-  async listarUsuarios(req, res) {
+  async listarUsuarios(
+    req,
+    res
+  ) {
+
     try {
+
       const model =
-        new UserAdminModel(req.user)
+        new UserAdminModel(
+          req.user
+        )
+
 
       const usuarios =
-        await model.listarUsuarios()
+        await model
+          .listarUsuarios()
+
 
       return res.json({
         total:
@@ -337,36 +295,36 @@ class UserAdminController {
       })
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 
 
   /* ==========================================================
-     GET /api/admin/users/catalog
+     CATALOGO
      ========================================================== */
 
-  /**
-   * Devuelve todos los cursos y todos
-   * sus submodulos activos.
-   *
-   * Sirve para construir la pantalla:
-   *
-   * BIG DATA
-   * ☑ Importar
-   * ☑ Datasets
-   * ☑ Analisis
-   * ☑ Comparacion
-   * ☑ Estructura
-   * ☑ Graficos
-   */
-  async catalogo(req, res) {
+  async catalogo(
+    req,
+    res
+  ) {
+
     try {
+
       const model =
-        new UserAdminModel(req.user)
+        new UserAdminModel(
+          req.user
+        )
+
 
       const cursos =
-        await model.obtenerCatalogo()
+        await model
+          .obtenerCatalogo()
+
 
       return res.json({
         total_cursos:
@@ -376,32 +334,37 @@ class UserAdminController {
       })
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 
 
   /* ==========================================================
-     GET /api/admin/users/:userId
+     OBTENER USUARIO
      ========================================================== */
 
-  /**
-   * Obtiene:
-   *
-   * - perfil
-   * - rol actual
-   * - empresa
-   * - cursos asignados
-   * - submodulos asignados
-   */
-  async obtenerUsuario(req, res) {
+  async obtenerUsuario(
+    req,
+    res
+  ) {
+
     const userId =
       String(
-        req.params.userId || ""
+        req.params.userId ||
+        ""
       ).trim()
 
 
-    if (!uuidValido(userId)) {
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
       return res
         .status(400)
         .json({
@@ -412,16 +375,22 @@ class UserAdminController {
 
 
     try {
-      const model =
-        new UserAdminModel(req.user)
 
-      const usuario =
-        await model.obtenerUsuario(
-          userId
+      const model =
+        new UserAdminModel(
+          req.user
         )
 
 
+      const usuario =
+        await model
+          .obtenerUsuario(
+            userId
+          )
+
+
       if (!usuario) {
+
         return res
           .status(404)
           .json({
@@ -431,44 +400,316 @@ class UserAdminController {
       }
 
 
-      return res.json(usuario)
+      return res.json(
+        usuario
+      )
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 
 
   /* ==========================================================
-     PATCH /api/admin/users/:userId/status
+     ACTUALIZAR USUARIO
      ========================================================== */
 
   /**
-   * Activa o desactiva una cuenta de usuario.
+   * PATCH
+   * /api/admin/users/:userId
    *
-   * Body esperado:
+   * Permite modificar:
    *
-   * {
-   *   "activo": true
-   * }
+   * - full_name
+   * - empresa
    *
-   * o:
+   * No modifica:
    *
-   * {
-   *   "activo": false
-   * }
-   *
-   * Los administradores no pueden ser
-   * desactivados mediante esta ruta.
+   * - correo
+   * - contraseña
+   * - rol
+   * - activo
+   * - permisos
    */
-  async cambiarEstadoUsuario(req, res) {
+  async actualizarUsuario(
+    req,
+    res
+  ) {
+
     const userId =
       String(
-        req.params.userId || ""
+        req.params.userId ||
+        ""
       ).trim()
 
 
-    if (!uuidValido(userId)) {
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "Usuario no valido"
+        })
+    }
+
+
+    const {
+      full_name,
+      fullName,
+      empresa
+    } =
+      req.body || {}
+
+
+    const nombre =
+      String(
+        full_name ||
+        fullName ||
+        ""
+      ).trim()
+
+
+    const empresaFinal =
+      String(
+        empresa ||
+        ""
+      ).trim()
+
+
+    /* ======================================================
+       VALIDACIONES
+       ====================================================== */
+
+    if (!nombre) {
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "El nombre completo es obligatorio"
+        })
+    }
+
+
+    if (
+      nombre.length >
+      150
+    ) {
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "El nombre no puede superar los 150 caracteres"
+        })
+    }
+
+
+    if (!empresaFinal) {
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "La empresa es obligatoria"
+        })
+    }
+
+
+    if (
+      empresaFinal.length >
+      150
+    ) {
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "La empresa no puede superar los 150 caracteres"
+        })
+    }
+
+
+    try {
+
+      const model =
+        new UserAdminModel(
+          req.user
+        )
+
+
+      const resultado =
+        await model
+          .actualizarUsuario(
+            userId,
+            {
+              fullName:
+                nombre,
+
+              empresa:
+                empresaFinal
+            }
+          )
+
+
+      /* ======================================================
+         USUARIO NO EXISTE
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "user_not_found"
+      ) {
+
+        return res
+          .status(404)
+          .json({
+            error:
+              "Usuario no encontrado"
+          })
+      }
+
+
+      /* ======================================================
+         NOMBRE INVALIDO
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "invalid_name"
+      ) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "El nombre completo es obligatorio"
+          })
+      }
+
+
+      /* ======================================================
+         EMPRESA INVALIDA
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "invalid_company"
+      ) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "La empresa es obligatoria"
+          })
+      }
+
+
+      /* ======================================================
+         NOMBRE MUY LARGO
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "name_too_long"
+      ) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "El nombre no puede superar los 150 caracteres"
+          })
+      }
+
+
+      /* ======================================================
+         EMPRESA MUY LARGA
+         ====================================================== */
+
+      if (
+        resultado.tipo ===
+        "company_too_long"
+      ) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "La empresa no puede superar los 150 caracteres"
+          })
+      }
+
+
+      /* ======================================================
+         RESPUESTA
+         ====================================================== */
+
+      return res.json({
+
+        ok:
+          true,
+
+        mensaje:
+          "Usuario actualizado correctamente",
+
+        usuario:
+          resultado.usuario
+
+      })
+
+    } catch (error) {
+
+      console.error(
+        "Error actualizando usuario:",
+        error
+      )
+
+
+      sendError(
+        res,
+        error
+      )
+    }
+  }
+
+
+  /* ==========================================================
+     CAMBIAR ESTADO
+     ========================================================== */
+
+  /**
+   * PATCH
+   * /api/admin/users/:userId/status
+   */
+  async cambiarEstadoUsuario(
+    req,
+    res
+  ) {
+
+    const userId =
+      String(
+        req.params.userId ||
+        ""
+      ).trim()
+
+
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
       return res
         .status(400)
         .json({
@@ -488,6 +729,7 @@ class UserAdminController {
       typeof activo !==
       "boolean"
     ) {
+
       return res
         .status(400)
         .json({
@@ -498,6 +740,7 @@ class UserAdminController {
 
 
     try {
+
       const model =
         new UserAdminModel(
           req.user
@@ -512,14 +755,11 @@ class UserAdminController {
           )
 
 
-      /* ======================================================
-         USUARIO NO EXISTE
-         ====================================================== */
-
       if (
         resultado.tipo ===
         "user_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -529,14 +769,11 @@ class UserAdminController {
       }
 
 
-      /* ======================================================
-         ESTADO INVALIDO
-         ====================================================== */
-
       if (
         resultado.tipo ===
         "invalid_state"
       ) {
+
         return res
           .status(400)
           .json({
@@ -546,14 +783,11 @@ class UserAdminController {
       }
 
 
-      /* ======================================================
-         PROTEGER ADMINISTRADORES
-         ====================================================== */
-
       if (
         resultado.tipo ===
         "admin_not_allowed"
       ) {
+
         return res
           .status(403)
           .json({
@@ -563,11 +797,8 @@ class UserAdminController {
       }
 
 
-      /* ======================================================
-         RESPUESTA
-         ====================================================== */
-
       return res.json({
+
         ok:
           true,
 
@@ -578,9 +809,11 @@ class UserAdminController {
 
         usuario:
           resultado.usuario
+
       })
 
     } catch (error) {
+
       sendError(
         res,
         error
@@ -590,21 +823,27 @@ class UserAdminController {
 
 
   /* ==========================================================
-     GET /api/admin/users/:userId/permissions
+     PERMISOS DE UN USUARIO
      ========================================================== */
 
-  /**
-   * Devuelve solamente los permisos
-   * actuales del usuario.
-   */
-  async permisosUsuario(req, res) {
+  async permisosUsuario(
+    req,
+    res
+  ) {
+
     const userId =
       String(
-        req.params.userId || ""
+        req.params.userId ||
+        ""
       ).trim()
 
 
-    if (!uuidValido(userId)) {
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
       return res
         .status(400)
         .json({
@@ -615,8 +854,12 @@ class UserAdminController {
 
 
     try {
+
       const model =
-        new UserAdminModel(req.user)
+        new UserAdminModel(
+          req.user
+        )
+
 
       const permisos =
         await model
@@ -626,6 +869,7 @@ class UserAdminController {
 
 
       if (!permisos) {
+
         return res
           .status(404)
           .json({
@@ -636,46 +880,53 @@ class UserAdminController {
 
 
       return res.json({
+
         user_id:
           userId,
 
         permisos
+
       })
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 
 
   /* ==========================================================
-     POST /api/admin/users/:userId/courses/:courseId
+     ASIGNAR CURSO
      ========================================================== */
 
-  /**
-   * Asigna un curso completo al usuario.
-   *
-   * IMPORTANTE:
-   *
-   * Esto solamente habilita el curso.
-   *
-   * Los submodulos se asignan
-   * individualmente.
-   */
-  async asignarCurso(req, res) {
+  async asignarCurso(
+    req,
+    res
+  ) {
+
     const userId =
       String(
-        req.params.userId || ""
+        req.params.userId ||
+        ""
       ).trim()
 
 
     const courseId =
       String(
-        req.params.courseId || ""
+        req.params.courseId ||
+        ""
       ).trim()
 
 
-    if (!uuidValido(userId)) {
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
       return res
         .status(400)
         .json({
@@ -690,6 +941,7 @@ class UserAdminController {
         courseId
       )
     ) {
+
       return res
         .status(400)
         .json({
@@ -700,21 +952,28 @@ class UserAdminController {
 
 
     try {
+
       const model =
-        new UserAdminModel(req.user)
+        new UserAdminModel(
+          req.user
+        )
 
 
       const resultado =
-        await model.asignarCurso(
-          userId,
-          Number(courseId)
-        )
+        await model
+          .asignarCurso(
+            userId,
+            Number(
+              courseId
+            )
+          )
 
 
       if (
         resultado.tipo ===
         "user_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -728,6 +987,7 @@ class UserAdminController {
         resultado.tipo ===
         "course_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -738,46 +998,57 @@ class UserAdminController {
 
 
       return res.json({
-        ok: true,
+
+        ok:
+          true,
 
         mensaje:
           "Curso asignado correctamente",
 
         asignacion:
           resultado.asignacion
+
       })
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 
 
   /* ==========================================================
-     DELETE /api/admin/users/:userId/courses/:courseId
+     QUITAR CURSO
      ========================================================== */
 
-  /**
-   * Quita el acceso al curso.
-   *
-   * UserAdminModel tambien desactiva
-   * los submodulos pertenecientes
-   * al curso.
-   */
-  async quitarCurso(req, res) {
+  async quitarCurso(
+    req,
+    res
+  ) {
+
     const userId =
       String(
-        req.params.userId || ""
+        req.params.userId ||
+        ""
       ).trim()
 
 
     const courseId =
       String(
-        req.params.courseId || ""
+        req.params.courseId ||
+        ""
       ).trim()
 
 
-    if (!uuidValido(userId)) {
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
       return res
         .status(400)
         .json({
@@ -792,6 +1063,7 @@ class UserAdminController {
         courseId
       )
     ) {
+
       return res
         .status(400)
         .json({
@@ -802,21 +1074,28 @@ class UserAdminController {
 
 
     try {
+
       const model =
-        new UserAdminModel(req.user)
+        new UserAdminModel(
+          req.user
+        )
 
 
       const resultado =
-        await model.quitarCurso(
-          userId,
-          Number(courseId)
-        )
+        await model
+          .quitarCurso(
+            userId,
+            Number(
+              courseId
+            )
+          )
 
 
       if (
         resultado.tipo ===
         "user_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -830,6 +1109,7 @@ class UserAdminController {
         resultado.tipo ===
         "course_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -840,44 +1120,54 @@ class UserAdminController {
 
 
       return res.json({
-        ok: true,
+
+        ok:
+          true,
 
         mensaje:
           "Acceso al curso eliminado correctamente"
+
       })
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 
 
   /* ==========================================================
-     POST /api/admin/users/:userId/modules/:moduleId
+     ASIGNAR MODULO
      ========================================================== */
 
-  /**
-   * Asigna un submodulo.
-   *
-   * Si el usuario todavia no tiene
-   * el curso correspondiente,
-   * UserAdminModel lo asigna
-   * automaticamente.
-   */
-  async asignarModulo(req, res) {
+  async asignarModulo(
+    req,
+    res
+  ) {
+
     const userId =
       String(
-        req.params.userId || ""
+        req.params.userId ||
+        ""
       ).trim()
 
 
     const moduleId =
       String(
-        req.params.moduleId || ""
+        req.params.moduleId ||
+        ""
       ).trim()
 
 
-    if (!uuidValido(userId)) {
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
       return res
         .status(400)
         .json({
@@ -892,6 +1182,7 @@ class UserAdminController {
         moduleId
       )
     ) {
+
       return res
         .status(400)
         .json({
@@ -902,21 +1193,28 @@ class UserAdminController {
 
 
     try {
+
       const model =
-        new UserAdminModel(req.user)
+        new UserAdminModel(
+          req.user
+        )
 
 
       const resultado =
-        await model.asignarModulo(
-          userId,
-          Number(moduleId)
-        )
+        await model
+          .asignarModulo(
+            userId,
+            Number(
+              moduleId
+            )
+          )
 
 
       if (
         resultado.tipo ===
         "user_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -930,6 +1228,7 @@ class UserAdminController {
         resultado.tipo ===
         "module_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -943,6 +1242,7 @@ class UserAdminController {
         resultado.tipo ===
         "course_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -953,39 +1253,57 @@ class UserAdminController {
 
 
       return res.json({
-        ok: true,
+
+        ok:
+          true,
 
         mensaje:
           "Modulo asignado correctamente",
 
         asignacion:
           resultado.asignacion
+
       })
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 
 
   /* ==========================================================
-     DELETE /api/admin/users/:userId/modules/:moduleId
+     QUITAR MODULO
      ========================================================== */
 
-  async quitarModulo(req, res) {
+  async quitarModulo(
+    req,
+    res
+  ) {
+
     const userId =
       String(
-        req.params.userId || ""
+        req.params.userId ||
+        ""
       ).trim()
 
 
     const moduleId =
       String(
-        req.params.moduleId || ""
+        req.params.moduleId ||
+        ""
       ).trim()
 
 
-    if (!uuidValido(userId)) {
+    if (
+      !uuidValido(
+        userId
+      )
+    ) {
+
       return res
         .status(400)
         .json({
@@ -1000,6 +1318,7 @@ class UserAdminController {
         moduleId
       )
     ) {
+
       return res
         .status(400)
         .json({
@@ -1010,21 +1329,28 @@ class UserAdminController {
 
 
     try {
+
       const model =
-        new UserAdminModel(req.user)
+        new UserAdminModel(
+          req.user
+        )
 
 
       const resultado =
-        await model.quitarModulo(
-          userId,
-          Number(moduleId)
-        )
+        await model
+          .quitarModulo(
+            userId,
+            Number(
+              moduleId
+            )
+          )
 
 
       if (
         resultado.tipo ===
         "user_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -1038,6 +1364,7 @@ class UserAdminController {
         resultado.tipo ===
         "module_not_found"
       ) {
+
         return res
           .status(404)
           .json({
@@ -1048,14 +1375,21 @@ class UserAdminController {
 
 
       return res.json({
-        ok: true,
+
+        ok:
+          true,
 
         mensaje:
           "Permiso del modulo eliminado correctamente"
+
       })
 
     } catch (error) {
-      sendError(res, error)
+
+      sendError(
+        res,
+        error
+      )
     }
   }
 }
@@ -1085,6 +1419,11 @@ export default {
   obtenerUsuario:
     controller
       .obtenerUsuario
+      .bind(controller),
+
+  actualizarUsuario:
+    controller
+      .actualizarUsuario
       .bind(controller),
 
   cambiarEstadoUsuario:
