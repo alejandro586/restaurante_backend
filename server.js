@@ -1,22 +1,71 @@
 import "dotenv/config"
 
-import express from "express"
-import cors from "cors"
+import express
+  from "express"
 
-import authRoutes from "./routes/auth.routes.js"
-import importRoutes from "./routes/import.routes.js"
-import compararRoutes from "./routes/comparar.routes.js"
-import tareaRoutes from "./routes/tarea.routes.js"
+import cors
+  from "cors"
 
-import courseRoutes from "./routes/course.routes.js"
-import courseDocumentRoutes from "./routes/course-document.routes.js"
 
-import adminUserRoutes from "./routes/admin-user.routes.js"
-import passwordResetRoutes from "./routes/password-reset.routes.js"
+/* ==========================================================
+   RUTAS PRINCIPALES
+   ========================================================== */
 
-import projectRoutes from "./routes/project.routes.js"
-import projectTaskRoutes from "./routes/project-task.routes.js"
-import projectInvitationRoutes from "./routes/project-invitation.routes.js"
+import authRoutes
+  from "./routes/auth.routes.js"
+
+import importRoutes
+  from "./routes/import.routes.js"
+
+import compararRoutes
+  from "./routes/comparar.routes.js"
+
+import tareaRoutes
+  from "./routes/tarea.routes.js"
+
+
+/* ==========================================================
+   CURSOS
+   ========================================================== */
+
+import courseRoutes
+  from "./routes/course.routes.js"
+
+import courseDocumentRoutes
+  from "./routes/course-document.routes.js"
+
+
+/* ==========================================================
+   ADMINISTRACION
+   ========================================================== */
+
+import adminUserRoutes
+  from "./routes/admin-user.routes.js"
+
+import courseAdminRoutes
+  from "./routes/course-admin.routes.js"
+
+
+/* ==========================================================
+   RECUPERACION DE CONTRASEÑA
+   ========================================================== */
+
+import passwordResetRoutes
+  from "./routes/password-reset.routes.js"
+
+
+/* ==========================================================
+   PROYECTOS
+   ========================================================== */
+
+import projectRoutes
+  from "./routes/project.routes.js"
+
+import projectTaskRoutes
+  from "./routes/project-task.routes.js"
+
+import projectInvitationRoutes
+  from "./routes/project-invitation.routes.js"
 
 
 /* ==========================================================
@@ -46,6 +95,7 @@ const port =
  * https://restaurante-rimberio.vercel.app,
  * http://localhost:5173
  */
+
 const origins =
   (
     process.env.CLIENT_URL ||
@@ -53,27 +103,35 @@ const origins =
   )
     .split(",")
     .map(
-      (origin) =>
+      (
+        origin
+      ) =>
         origin.trim()
     )
-    .filter(Boolean)
+    .filter(
+      Boolean
+    )
 
 
 app.use(
   cors({
+
     origin: (
       origin,
       callback
     ) => {
 
       /*
-       * Permitimos peticiones sin Origin:
+       * Permite:
        *
-       * - Postman
        * - curl
-       * - Render health checks
+       * - Postman
+       * - Render
+       * - health checks
        */
-      if (!origin) {
+      if (
+        !origin
+      ) {
 
         return callback(
           null,
@@ -83,8 +141,9 @@ app.use(
 
 
       /*
-       * Si CLIENT_URL no estuviera configurado,
-       * permitimos temporalmente cualquier origen.
+       * Si CLIENT_URL todavía
+       * no está configurado,
+       * permitimos temporalmente.
        */
       if (
         origins.length ===
@@ -98,9 +157,6 @@ app.use(
       }
 
 
-      /*
-       * Frontend autorizado.
-       */
       if (
         origins.includes(
           origin
@@ -123,6 +179,7 @@ app.use(
 
     credentials:
       true
+
   })
 )
 
@@ -131,15 +188,6 @@ app.use(
    BODY
    ========================================================== */
 
-/**
- * Estas configuraciones son para JSON
- * y formularios normales.
- *
- * Los documentos multipart/form-data
- * son procesados por Multer dentro de:
- *
- * course-document.routes.js
- */
 app.use(
   express.json({
     limit:
@@ -208,6 +256,7 @@ app.use(
  * GET /api/courses/big-data
  * GET /api/courses/big-data/modules
  */
+
 app.use(
   "/api/courses",
   courseRoutes
@@ -219,41 +268,21 @@ app.use(
    ========================================================== */
 
 /**
- * MODULO PRINCIPAL DEL ERP
- *
- * Todas las rutas internas están
- * protegidas mediante requireAuth.
- *
- *
- * LISTAR DOCUMENTOS
+ * Ejemplos:
  *
  * GET
  * /api/course-documents/courses/:courseId
- *
- *
- * FILTRAR POR MODULO
- *
- * GET
- * /api/course-documents/courses/:courseId?modulo_id=1
- *
- *
- * SUBIR DOCUMENTO
  *
  * POST
  * /api/course-documents/courses/:courseId
  *
- *
- * OBTENER URL PRIVADA
- *
  * GET
  * /api/course-documents/:documentId/url
- *
- *
- * ELIMINAR DOCUMENTO
  *
  * DELETE
  * /api/course-documents/:documentId
  */
+
 app.use(
   "/api/course-documents",
   courseDocumentRoutes
@@ -265,21 +294,85 @@ app.use(
    ========================================================== */
 
 /**
- * Solo administradores.
+ * Exclusivo administrador.
  *
- * Permite:
+ * Ejemplos:
  *
- * - registrar usuarios
- * - editar usuarios
- * - activar/desactivar
- * - asignar cursos
- * - retirar cursos
- * - asignar módulos
- * - retirar módulos
+ * GET
+ * /api/admin/users
+ *
+ * POST
+ * /api/admin/users
+ *
+ * GET
+ * /api/admin/users/catalog
+ *
+ * GET
+ * /api/admin/users/:userId
+ *
+ * GET
+ * /api/admin/users/:userId/permissions
+ *
+ * POST
+ * /api/admin/users/:userId/courses/:courseId
+ *
+ * DELETE
+ * /api/admin/users/:userId/courses/:courseId
+ *
+ * POST
+ * /api/admin/users/:userId/modules/:moduleId
+ *
+ * DELETE
+ * /api/admin/users/:userId/modules/:moduleId
  */
+
 app.use(
   "/api/admin/users",
   adminUserRoutes
+)
+
+
+/* ==========================================================
+   ADMINISTRACION DE CURSOS Y MODULOS
+   ========================================================== */
+
+/**
+ * Exclusivo administrador.
+ *
+ *
+ * CATALOGO
+ *
+ * GET
+ * /api/admin/courses
+ *
+ *
+ * CURSOS
+ *
+ * POST
+ * /api/admin/courses
+ *
+ * PATCH
+ * /api/admin/courses/:courseId
+ *
+ * PATCH
+ * /api/admin/courses/:courseId/status
+ *
+ *
+ * MODULOS
+ *
+ * POST
+ * /api/admin/courses/:courseId/modules
+ *
+ * PATCH
+ * /api/admin/courses/modules/:moduleId
+ *
+ * PATCH
+ * /api/admin/courses/modules/:moduleId/status
+ */
+
+app.use(
+  "/api/admin/courses",
+  courseAdminRoutes
 )
 
 
@@ -288,7 +381,7 @@ app.use(
    ========================================================== */
 
 /**
- * RUTAS PUBLICAS:
+ * Públicas:
  *
  * POST
  * /api/password-reset/request
@@ -297,7 +390,7 @@ app.use(
  * /api/password-reset/complete
  *
  *
- * RUTAS ADMIN:
+ * Administrador:
  *
  * GET
  * /api/password-reset/admin
@@ -308,6 +401,7 @@ app.use(
  * POST
  * /api/password-reset/admin/:id/reject
  */
+
 app.use(
   "/api/password-reset",
   passwordResetRoutes
@@ -335,12 +429,12 @@ app.use(
 
 
 /* ==========================================================
-   INVITACIONES Y CORREO
+   INVITACIONES
    ========================================================== */
 
 /**
- * Este archivo contiene internamente
- * rutas como:
+ * project-invitation.routes.js
+ * ya contiene internamente:
  *
  * /invitations/:token
  * /projects/:id/invitations
@@ -349,6 +443,7 @@ app.use(
  * Por eso se monta directamente
  * sobre /api.
  */
+
 app.use(
   "/api",
   projectInvitationRoutes
@@ -359,12 +454,6 @@ app.use(
    HEALTH CHECK
    ========================================================== */
 
-/**
- * Permite comprobar que:
- *
- * - Render está levantado
- * - Express está funcionando
- */
 app.get(
   "/api/health",
   (
@@ -372,12 +461,14 @@ app.get(
     res
   ) => {
 
-    return res.json({
+    res.json({
+
       status:
         "ok",
 
       service:
         "rimberio-api"
+
     })
   }
 )
@@ -394,12 +485,14 @@ app.get(
     res
   ) => {
 
-    return res.json({
+    res.json({
+
       name:
         "RIMBERIO API",
 
       status:
         "online"
+
     })
   }
 )
@@ -412,22 +505,25 @@ app.get(
 /**
  * IMPORTANTE:
  *
- * Debe quedar después de todas
- * las rutas reales.
+ * Siempre debe permanecer
+ * después de todas las rutas.
  */
+
 app.use(
   (
     req,
     res
   ) => {
 
-    return res
+    res
       .status(
         404
       )
       .json({
+
         error:
           "Recurso no encontrado"
+
       })
   }
 )
@@ -451,32 +547,34 @@ app.use(
     )
 
 
-    /* --------------------------------------------------------
+    /* ======================================================
        ARCHIVO DEMASIADO GRANDE
-       -------------------------------------------------------- */
+       ====================================================== */
 
     if (
-      error?.code ===
+      error.code ===
       "LIMIT_FILE_SIZE"
     ) {
 
       return res
         .status(
-          413
+          400
         )
         .json({
+
           error:
             "El archivo supera el tamaño permitido"
+
         })
     }
 
 
-    /* --------------------------------------------------------
+    /* ======================================================
        FORMATO NO PERMITIDO
-       -------------------------------------------------------- */
+       ====================================================== */
 
     if (
-      error?.message
+      error.message
         ?.includes(
           "Formato no permitido"
         )
@@ -487,18 +585,20 @@ app.use(
           400
         )
         .json({
+
           error:
             error.message
+
         })
     }
 
 
-    /* --------------------------------------------------------
+    /* ======================================================
        CORS
-       -------------------------------------------------------- */
+       ====================================================== */
 
     if (
-      error?.message ===
+      error.message ===
       "Origen no permitido por CORS"
     ) {
 
@@ -507,27 +607,33 @@ app.use(
           403
         )
         .json({
+
           error:
             "Origen no permitido"
+
         })
     }
 
 
-    /* --------------------------------------------------------
+    /* ======================================================
        ERROR INTERNO
-       -------------------------------------------------------- */
+       ====================================================== */
 
     return res
       .status(
         500
       )
       .json({
+
         error:
           process.env.NODE_ENV ===
           "production"
+
             ? "Error interno del servidor"
-            : error?.message ||
+
+            : error.message ||
               "Error interno del servidor"
+
       })
   }
 )
