@@ -1360,6 +1360,11 @@ class UserAdminModel {
     userId,
     moduloId
   ) {
+
+    /* ========================================================
+       1. COMPROBAR USUARIO
+       ======================================================== */
+
     const perfil =
       await this.buscarPerfil(
         userId
@@ -1373,6 +1378,10 @@ class UserAdminModel {
       }
     }
 
+
+    /* ========================================================
+       2. COMPROBAR MODULO
+       ======================================================== */
 
     const modulo =
       await this.buscarModulo(
@@ -1388,12 +1397,81 @@ class UserAdminModel {
     }
 
 
+    /* ========================================================
+       3. COMPROBAR ESTADO ANTERIOR DEL CURSO
+       ======================================================== */
+
     /*
-     * Para tener un submodulo,
-     * primero debe tener el curso.
+     * Guardamos si el usuario ya tenía
+     * el curso activo ANTES de tocar nada.
      *
-     * Lo asignamos automaticamente.
+     * Esto permite revertir la operación
+     * si falla la asignación del módulo.
      */
+
+    const {
+      data:
+        cursosAnteriores,
+      error:
+        cursoAnteriorError
+    } =
+      await this.db
+        .from(
+          "usuario_cursos"
+        )
+        .select(
+          "id,activo"
+        )
+        .eq(
+          "user_id",
+          userId
+        )
+        .eq(
+          "curso_id",
+          modulo.curso_id
+        )
+        .order(
+          "id",
+          {
+            ascending:
+              true
+          }
+        )
+        .limit(
+          1
+        )
+
+
+    if (
+      cursoAnteriorError
+    ) {
+      throw cursoAnteriorError
+    }
+
+
+    const cursoAnterior =
+      Array.isArray(
+        cursosAnteriores
+      )
+        ? cursosAnteriores[0] ||
+          null
+        : null
+
+
+    const cursoYaEstabaActivo =
+      cursoAnterior?.activo ===
+      true
+
+
+    /* ========================================================
+       4. ASEGURAR CURSO
+       ======================================================== */
+
+    /*
+     * Un módulo nunca debe existir
+     * sin acceso a su curso padre.
+     */
+
     const cursoResultado =
       await this.asignarCurso(
         userId,
@@ -1409,111 +1487,325 @@ class UserAdminModel {
     }
 
 
-    const {
-      data:
-        existente,
-      error:
-        buscarError
-    } =
-      await this.db
-        .from(
-          "usuario_modulos"
-        )
-        .select(
-          "id,activo"
-        )
-        .eq(
-          "user_id",
-          userId
-        )
-        .eq(
-          "modulo_id",
-          moduloId
-        )
-        .maybeSingle()
+    try {
 
+      /* ======================================================
+         5. BUSCAR PERMISO EXISTENTE DEL MODULO
+         ====================================================== */
 
-    if (buscarError) {
-      throw buscarError
-    }
-
-
-    if (existente) {
+      /*
+       * NO usamos maybeSingle().
+       *
+       * Si por algún motivo histórico
+       * existen registros duplicados,
+       * maybeSingle() podría fallar.
+       *
+       * Tomamos el primer registro.
+       */
 
       const {
-        data,
-        error
+        data:
+          permisosExistentes,
+        error:
+          buscarError
       } =
         await this.db
           .from(
             "usuario_modulos"
           )
-          .update({
-            activo:
-              true,
-
-            asignado_por:
-              this.adminUser.id
-          })
-          .eq(
-            "id",
-            existente.id
+          .select(
+            "id,activo"
           )
-          .select()
-          .single()
+          .eq(
+            "user_id",
+            userId
+          )
+          .eq(
+            "modulo_id",
+            moduloId
+          )
+          .order(
+            "id",
+            {
+              ascending:
+                true
+            }
+          )
+          .limit(
+            1
+          )
 
 
-      if (error) {
-        throw error
+      if (
+        buscarError
+      ) {
+        throw buscarError
       }
 
+
+      const existente =
+        Array.isArray(
+          permisosExistentes
+        )
+          ? permisosExistentes[0] ||
+            null
+          : null
+
+
+      let asignacion =
+        null
+
+
+      /* ======================================================
+         6A. REACTIVAR PERMISO EXISTENTE
+         ====================================================== */
+
+      if (
+        existente
+      ) {
+
+        const {
+          data,
+          error
+        } =
+          await this.db
+            .from(
+              "usuario_modulos"
+            )
+            .update({
+              activo:
+                true,
+
+              asignado_por:
+                this.adminUser.id
+            })
+            .eq(
+              "id",
+              existente.id
+            )
+            .select(
+              "id,user_id,modulo_id,activo,asignado_por,created_at,updated_at"
+            )
+            .single()
+
+
+        if (
+          error
+        ) {
+          throw error
+        }
+
+
+        asignacion =
+          data
+
+      } else {
+
+        /* ====================================================
+           6B. CREAR PERMISO NUEVO
+           ==================================================== */
+
+        const {
+          data,
+          error
+        } =
+          await this.db
+            .from(
+              "usuario_modulos"
+            )
+            .insert({
+              user_id:
+                userId,
+
+              modulo_id:
+                moduloId,
+
+              activo:
+                true,
+
+              asignado_por:
+                this.adminUser.id
+            })
+            .select(
+              "id,user_id,modulo_id,activo,asignado_por,created_at,updated_at"
+            )
+            .single()
+
+
+        if (
+          error
+        ) {
+          throw error
+        }
+
+
+        asignacion =
+          data
+      }
+
+
+      /* ======================================================
+         7. VERIFICAR QUE REALMENTE QUEDO GUARDADO
+         ====================================================== */
+
+      /*
+       * No damos la operación por terminada
+       * hasta comprobar directamente
+       * usuario_modulos.
+       */
+
+      const {
+        data:
+          verificacion,
+        error:
+          verificarError
+      } =
+        await this.db
+          .from(
+            "usuario_modulos"
+          )
+          .select(
+            "id,user_id,modulo_id,activo,asignado_por,created_at,updated_at"
+          )
+          .eq(
+            "user_id",
+            userId
+          )
+          .eq(
+            "modulo_id",
+            moduloId
+          )
+          .eq(
+            "activo",
+            true
+          )
+          .order(
+            "id",
+            {
+              ascending:
+                true
+            }
+          )
+          .limit(
+            1
+          )
+
+
+      if (
+        verificarError
+      ) {
+        throw verificarError
+      }
+
+
+      const permisoConfirmado =
+        Array.isArray(
+          verificacion
+        )
+          ? verificacion[0] ||
+            null
+          : null
+
+
+      if (
+        !permisoConfirmado
+      ) {
+
+        throw new Error(
+          "El permiso del módulo no pudo confirmarse en usuario_modulos"
+        )
+      }
+
+
+      /* ======================================================
+         8. RESULTADO CORRECTO
+         ====================================================== */
 
       return {
         tipo:
           "ok",
 
         asignacion:
-          data
+          permisoConfirmado ||
+          asignacion,
+
+        curso_id:
+          modulo.curso_id,
+
+        modulo_id:
+          modulo.id,
+
+        clave:
+          modulo.clave
       }
-    }
 
-
-    const {
-      data,
+    } catch (
       error
-    } =
-      await this.db
-        .from(
-          "usuario_modulos"
-        )
-        .insert({
-          user_id:
-            userId,
+    ) {
 
-          modulo_id:
-            moduloId,
+      /* ======================================================
+         9. ROLLBACK DEL CURSO
+         ====================================================== */
 
-          activo:
-            true,
+      /*
+       * Si el usuario NO tenía el curso antes
+       * y falló el módulo, deshacemos
+       * la activación automática del curso.
+       *
+       * Así nunca volveremos a terminar con:
+       *
+       * curso ✅
+       * módulo ❌
+       */
 
-          asignado_por:
-            this.adminUser.id
-        })
-        .select()
-        .single()
+      if (
+        !cursoYaEstabaActivo
+      ) {
+
+        try {
+
+          await this.db
+            .from(
+              "usuario_cursos"
+            )
+            .update({
+              activo:
+                false
+            })
+            .eq(
+              "user_id",
+              userId
+            )
+            .eq(
+              "curso_id",
+              modulo.curso_id
+            )
+
+        } catch (
+          rollbackError
+        ) {
+
+          console.error(
+            "No se pudo revertir el curso después del fallo del módulo:",
+            rollbackError
+          )
+        }
+      }
 
 
-    if (error) {
+      console.error(
+        "Error asignando módulo:",
+        {
+          userId,
+          moduloId,
+          cursoId:
+            modulo.curso_id,
+          error
+        }
+      )
+
+
       throw error
-    }
-
-
-    return {
-      tipo:
-        "ok",
-
-      asignacion:
-        data
     }
   }
 
