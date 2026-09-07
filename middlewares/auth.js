@@ -31,6 +31,7 @@ export const requireAuth =
         "Bearer "
       )
     ) {
+
       return res
         .status(401)
         .json({
@@ -47,6 +48,7 @@ export const requireAuth =
 
 
     if (!token) {
+
       return res
         .status(401)
         .json({
@@ -77,6 +79,7 @@ export const requireAuth =
         error ||
         !data.user
       ) {
+
         return res
           .status(401)
           .json({
@@ -113,6 +116,7 @@ export const requireAuth =
         profileError ||
         !perfil
       ) {
+
         return res
           .status(403)
           .json({
@@ -130,6 +134,7 @@ export const requireAuth =
         perfil.activo ===
         false
       ) {
+
         return res
           .status(403)
           .json({
@@ -137,6 +142,19 @@ export const requireAuth =
               "Tu cuenta está desactivada. Contacta con un administrador."
           })
       }
+
+
+      /* ====================================================
+         NORMALIZAR ROL
+         ==================================================== */
+
+      perfil.role =
+        String(
+          perfil.role ||
+          ""
+        )
+          .trim()
+          .toLowerCase()
 
 
       /* ====================================================
@@ -152,7 +170,9 @@ export const requireAuth =
 
       next()
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
 
       console.error(
         "Error validando sesion:",
@@ -166,7 +186,6 @@ export const requireAuth =
           error:
             "Sesion no valida"
         })
-
     }
   }
 
@@ -183,9 +202,10 @@ export const requireAdmin =
   ) => {
 
     if (
-      req.user.role !==
+      req.user?.role !==
       "admin"
     ) {
+
       return res
         .status(403)
         .json({
@@ -200,37 +220,49 @@ export const requireAdmin =
 
 
 /* ==========================================================
-   TRABAJADOR - SISTEMA ANTIGUO
+   USUARIO NORMAL
    ========================================================== */
 
 /**
- * Se conserva temporalmente.
+ * Rol definitivo visible en RIMBERIO:
  *
- * Todavia existen rutas antiguas
- * que dependen de este rol.
+ * - admin
+ * - usuario
  *
- * Lo eliminaremos cuando terminemos
- * la migracion completa a:
- *
- * admin
- * usuario
+ * Durante la transición también aceptamos
+ * "trabajador" para mantener funcionando
+ * las cuentas antiguas.
  */
-export const requireTrabajador =
+export const requireUsuario =
   (
     req,
     res,
     next
   ) => {
 
+    const rol =
+      String(
+        req.user?.role ||
+        ""
+      )
+        .trim()
+        .toLowerCase()
+
+
     if (
-      req.user.role !==
-      "trabajador"
+      ![
+        "usuario",
+        "trabajador"
+      ].includes(
+        rol
+      )
     ) {
+
       return res
         .status(403)
         .json({
           error:
-            "Esta seccion es solo para trabajadores"
+            "Esta seccion es solo para usuarios"
         })
     }
 
@@ -240,12 +272,47 @@ export const requireTrabajador =
 
 
 /* ==========================================================
-   CREACION DE PROYECTOS - SISTEMA ACTUAL
+   COMPATIBILIDAD CON SISTEMA ANTIGUO
    ========================================================== */
 
 /**
- * Se conserva porque Proyectos
- * todavia utiliza los roles anteriores.
+ * Algunas rutas antiguas todavía importan:
+ *
+ * requireTrabajador
+ *
+ * No eliminamos el nombre todavía porque
+ * rompería esas rutas.
+ *
+ * Internamente utiliza requireUsuario().
+ */
+export const requireTrabajador =
+  (
+    req,
+    res,
+    next
+  ) => {
+
+    return requireUsuario(
+      req,
+      res,
+      next
+    )
+  }
+
+
+/* ==========================================================
+   CREACION DE PROYECTOS
+   ========================================================== */
+
+/**
+ * El sistema final utiliza:
+ *
+ * - admin
+ * - usuario
+ *
+ * trabajador y supervisor continúan
+ * aceptándose temporalmente para no romper
+ * módulos antiguos del proyecto.
  */
 export const requireProjectCreator =
   (
@@ -254,14 +321,26 @@ export const requireProjectCreator =
     next
   ) => {
 
+    const rol =
+      String(
+        req.user?.role ||
+        ""
+      )
+        .trim()
+        .toLowerCase()
+
+
     if (
       ![
         "admin",
+        "usuario",
+        "trabajador",
         "supervisor"
       ].includes(
-        req.user.role
+        rol
       )
     ) {
+
       return res
         .status(403)
         .json({
@@ -280,19 +359,26 @@ export const requireProjectCreator =
    ========================================================== */
 
 const normalizarClaves =
-  (claves) => {
+  (
+    claves
+  ) => {
 
     return [
       ...new Set(
         claves
           .flat()
           .map(
-            (clave) =>
+            (
+              clave
+            ) =>
               String(
-                clave || ""
+                clave ||
+                ""
               ).trim()
           )
-          .filter(Boolean)
+          .filter(
+            Boolean
+          )
       )
     ]
   }
@@ -304,7 +390,7 @@ const normalizarClaves =
 
 /**
  * Comprueba si el usuario tiene
- * al menos UNO de los modulos recibidos.
+ * al menos UNO de los módulos recibidos.
  *
  * Ejemplo:
  *
@@ -327,7 +413,9 @@ const normalizarClaves =
  * 4. asignacion activa al modulo
  */
 export const requireAnyModulePermission =
-  (...permisosSolicitados) => {
+  (
+    ...permisosSolicitados
+  ) => {
 
     const claves =
       normalizarClaves(
@@ -346,8 +434,10 @@ export const requireAnyModulePermission =
          ==================================================== */
 
       if (
-        claves.length === 0
+        claves.length ===
+        0
       ) {
+
         return res
           .status(500)
           .json({
@@ -365,6 +455,7 @@ export const requireAnyModulePermission =
         req.user?.role ===
         "admin"
       ) {
+
         return next()
       }
 
@@ -378,6 +469,7 @@ export const requireAnyModulePermission =
 
 
       if (!userId) {
+
         return res
           .status(401)
           .json({
@@ -398,7 +490,8 @@ export const requireAnyModulePermission =
            ================================================== */
 
         const {
-          data: modulos,
+          data:
+            modulos,
           error:
             modulosError
         } =
@@ -419,15 +512,20 @@ export const requireAnyModulePermission =
             )
 
 
-        if (modulosError) {
+        if (
+          modulosError
+        ) {
+
           throw modulosError
         }
 
 
         if (
           !modulos ||
-          modulos.length === 0
+          modulos.length ===
+          0
         ) {
+
           return res
             .status(403)
             .json({
@@ -443,7 +541,9 @@ export const requireAnyModulePermission =
 
         const moduleIds =
           modulos.map(
-            (modulo) =>
+            (
+              modulo
+            ) =>
               modulo.id
           )
 
@@ -452,7 +552,9 @@ export const requireAnyModulePermission =
           [
             ...new Set(
               modulos.map(
-                (modulo) =>
+                (
+                  modulo
+                ) =>
                   modulo.curso_id
               )
             )
@@ -464,7 +566,8 @@ export const requireAnyModulePermission =
            ================================================== */
 
         const {
-          data: cursos,
+          data:
+            cursos,
           error:
             cursosError
         } =
@@ -485,7 +588,10 @@ export const requireAnyModulePermission =
             )
 
 
-        if (cursosError) {
+        if (
+          cursosError
+        ) {
+
           throw cursosError
         }
 
@@ -493,9 +599,12 @@ export const requireAnyModulePermission =
         const cursosActivos =
           new Set(
             (
-              cursos || []
+              cursos ||
+              []
             ).map(
-              (curso) =>
+              (
+                curso
+              ) =>
                 Number(
                   curso.id
                 )
@@ -507,6 +616,7 @@ export const requireAnyModulePermission =
           cursosActivos.size ===
           0
         ) {
+
           return res
             .status(403)
             .json({
@@ -552,6 +662,7 @@ export const requireAnyModulePermission =
         if (
           cursosUsuarioError
         ) {
+
           throw cursosUsuarioError
         }
 
@@ -562,7 +673,9 @@ export const requireAnyModulePermission =
               asignacionesCurso ||
               []
             ).map(
-              (asignacion) =>
+              (
+                asignacion
+              ) =>
                 Number(
                   asignacion
                     .curso_id
@@ -575,6 +688,7 @@ export const requireAnyModulePermission =
           cursosPermitidos.size ===
           0
         ) {
+
           return res
             .status(403)
             .json({
@@ -618,6 +732,7 @@ export const requireAnyModulePermission =
         if (
           modulosUsuarioError
         ) {
+
           throw modulosUsuarioError
         }
 
@@ -628,7 +743,9 @@ export const requireAnyModulePermission =
               asignacionesModulo ||
               []
             ).map(
-              (asignacion) =>
+              (
+                asignacion
+              ) =>
                 Number(
                   asignacion
                     .modulo_id
@@ -643,7 +760,9 @@ export const requireAnyModulePermission =
 
         const moduloPermitido =
           modulos.find(
-            (modulo) =>
+            (
+              modulo
+            ) =>
               cursosPermitidos.has(
                 Number(
                   modulo.curso_id
@@ -660,6 +779,7 @@ export const requireAnyModulePermission =
         if (
           !moduloPermitido
         ) {
+
           return res
             .status(403)
             .json({
@@ -674,6 +794,7 @@ export const requireAnyModulePermission =
            ================================================== */
 
         req.modulePermission = {
+
           id:
             moduloPermitido.id,
 
@@ -693,7 +814,9 @@ export const requireAnyModulePermission =
 
         next()
 
-      } catch (error) {
+      } catch (
+        error
+      ) {
 
         console.error(
           "Error comprobando permiso de modulo:",
@@ -707,7 +830,6 @@ export const requireAnyModulePermission =
             error:
               "No se pudo comprobar el permiso del usuario"
           })
-
       }
     }
   }
@@ -733,7 +855,9 @@ export const requireAnyModulePermission =
  * )
  */
 export const requireModulePermission =
-  (clave) =>
+  (
+    clave
+  ) =>
     requireAnyModulePermission(
       clave
     )
