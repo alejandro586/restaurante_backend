@@ -32,14 +32,8 @@ class UserAdminModel {
    * - contraseña temporal
    * - empresa
    *
-   * Por ahora el rol interno sigue siendo "trabajador"
-   * para mantener compatibilidad con las rutas antiguas.
-   *
-   * En la interfaz se mostrará simplemente como "Usuario".
-   *
-   * Más adelante migraremos definitivamente:
-   *
-   * trabajador -> usuario
+   * El rol normal definitivo del ERP es "usuario".
+   * El rol "admin" queda reservado para administradores.
    */
   async crearUsuario({
     email,
@@ -248,15 +242,10 @@ class UserAdminModel {
                 nombre,
 
               /*
-               * IMPORTANTE:
-               *
-               * Seguimos usando trabajador
-               * internamente mientras existan
-               * funciones antiguas que dependen
-               * de ese rol.
+               * Rol normal definitivo del ERP.
                */
               role:
-                "trabajador",
+                "usuario",
 
               empresa:
                 empresaFinal,
@@ -603,10 +592,6 @@ class UserAdminModel {
     activo
   ) {
 
-    /* ========================================================
-       VALIDAR ESTADO
-       ======================================================== */
-
     if (
       typeof activo !==
       "boolean"
@@ -617,10 +602,6 @@ class UserAdminModel {
       }
     }
 
-
-    /* ========================================================
-       BUSCAR USUARIO
-       ======================================================== */
 
     const perfil =
       await this.buscarPerfil(
@@ -636,10 +617,6 @@ class UserAdminModel {
     }
 
 
-    /* ========================================================
-       PROTEGER ADMINISTRADORES
-       ======================================================== */
-
     if (
       perfil.role ===
       "admin"
@@ -650,10 +627,6 @@ class UserAdminModel {
       }
     }
 
-
-    /* ========================================================
-       ACTUALIZAR ESTADO
-       ======================================================== */
 
     const {
       data,
@@ -680,10 +653,6 @@ class UserAdminModel {
       throw error
     }
 
-
-    /* ========================================================
-       RESULTADO
-       ======================================================== */
 
     return {
       tipo:
@@ -941,18 +910,6 @@ class UserAdminModel {
      CATALOGO COMPLETO
      ========================================================== */
 
-  /**
-   * Sirve para que el ADMIN vea:
-   *
-   * Big Data
-   *   ☑ Importar
-   *   ☑ Analizar
-   *   ☑ Comparar
-   *   ...
-   *
-   * incluyendo los modulos que el usuario
-   * aun no tiene asignados.
-   */
   async obtenerCatalogo() {
 
     const {
@@ -1213,10 +1170,6 @@ class UserAdminModel {
      QUITAR CURSO
      ========================================================== */
 
-  /**
-   * Al quitar un curso también desactivamos
-   * los permisos de sus submodulos.
-   */
   async quitarCurso(
     userId,
     cursoId
@@ -1275,10 +1228,6 @@ class UserAdminModel {
     }
 
 
-    /*
-     * Obtenemos todos los modulos
-     * pertenecientes al curso.
-     */
     const {
       data:
         modulos,
@@ -1361,10 +1310,6 @@ class UserAdminModel {
     moduloId
   ) {
 
-    /* ========================================================
-       1. COMPROBAR USUARIO
-       ======================================================== */
-
     const perfil =
       await this.buscarPerfil(
         userId
@@ -1379,10 +1324,6 @@ class UserAdminModel {
     }
 
 
-    /* ========================================================
-       2. COMPROBAR MODULO
-       ======================================================== */
-
     const modulo =
       await this.buscarModulo(
         moduloId
@@ -1396,18 +1337,6 @@ class UserAdminModel {
       }
     }
 
-
-    /* ========================================================
-       3. COMPROBAR ESTADO ANTERIOR DEL CURSO
-       ======================================================== */
-
-    /*
-     * Guardamos si el usuario ya tenía
-     * el curso activo ANTES de tocar nada.
-     *
-     * Esto permite revertir la operación
-     * si falla la asignación del módulo.
-     */
 
     const {
       data:
@@ -1463,15 +1392,6 @@ class UserAdminModel {
       true
 
 
-    /* ========================================================
-       4. ASEGURAR CURSO
-       ======================================================== */
-
-    /*
-     * Un módulo nunca debe existir
-     * sin acceso a su curso padre.
-     */
-
     const cursoResultado =
       await this.asignarCurso(
         userId,
@@ -1488,20 +1408,6 @@ class UserAdminModel {
 
 
     try {
-
-      /* ======================================================
-         5. BUSCAR PERMISO EXISTENTE DEL MODULO
-         ====================================================== */
-
-      /*
-       * NO usamos maybeSingle().
-       *
-       * Si por algún motivo histórico
-       * existen registros duplicados,
-       * maybeSingle() podría fallar.
-       *
-       * Tomamos el primer registro.
-       */
 
       const {
         data:
@@ -1556,10 +1462,6 @@ class UserAdminModel {
         null
 
 
-      /* ======================================================
-         6A. REACTIVAR PERMISO EXISTENTE
-         ====================================================== */
-
       if (
         existente
       ) {
@@ -1601,10 +1503,6 @@ class UserAdminModel {
 
       } else {
 
-        /* ====================================================
-           6B. CREAR PERMISO NUEVO
-           ==================================================== */
-
         const {
           data,
           error
@@ -1643,16 +1541,6 @@ class UserAdminModel {
           data
       }
 
-
-      /* ======================================================
-         7. VERIFICAR QUE REALMENTE QUEDO GUARDADO
-         ====================================================== */
-
-      /*
-       * No damos la operación por terminada
-       * hasta comprobar directamente
-       * usuario_modulos.
-       */
 
       const {
         data:
@@ -1710,16 +1598,11 @@ class UserAdminModel {
       if (
         !permisoConfirmado
       ) {
-
         throw new Error(
           "El permiso del módulo no pudo confirmarse en usuario_modulos"
         )
       }
 
-
-      /* ======================================================
-         8. RESULTADO CORRECTO
-         ====================================================== */
 
       return {
         tipo:
@@ -1742,21 +1625,6 @@ class UserAdminModel {
     } catch (
       error
     ) {
-
-      /* ======================================================
-         9. ROLLBACK DEL CURSO
-         ====================================================== */
-
-      /*
-       * Si el usuario NO tenía el curso antes
-       * y falló el módulo, deshacemos
-       * la activación automática del curso.
-       *
-       * Así nunca volveremos a terminar con:
-       *
-       * curso ✅
-       * módulo ❌
-       */
 
       if (
         !cursoYaEstabaActivo
