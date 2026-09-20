@@ -1,4 +1,7 @@
 import { adminClient } from "../config/supabase.js"
+import crypto from "node:crypto"
+import AccountActivationModel from "./AccountActivationModel.js"
+import MailService from "../services/MailService.js"
 
 
 const PROFILE_FIELDS =
@@ -10,6 +13,7 @@ const CURSO_FIELDS =
 const MODULO_FIELDS =
   "id,curso_id,nombre,slug,clave,descripcion,orden,activo"
 
+const DOMINIO_EMPRESA = String(process.env.EMPRESA_DOMINIO || "").trim().toLowerCase()
 
 class UserAdminModel {
   constructor(adminUser) {
@@ -35,290 +39,112 @@ class UserAdminModel {
    * El rol normal definitivo del ERP es "usuario".
    * El rol "admin" queda reservado para administradores.
    */
-  async crearUsuario({
-    email,
-    password,
-    fullName,
-    empresa
-  }) {
-
-    const correo =
-      String(
-        email || ""
-      )
-        .trim()
-        .toLowerCase()
-
-
-    const nombre =
-      String(
-        fullName || ""
-      ).trim()
-
-
-    const empresaFinal =
-      String(
-        empresa || ""
-      ).trim()
-
-
-    /* ========================================================
-       VALIDACIONES BASICAS
-       ======================================================== */
-
-    if (!correo) {
-      throw new Error(
-        "El correo es obligatorio"
-      )
-    }
-
-
-    if (!password) {
-      throw new Error(
-        "La contraseña es obligatoria"
-      )
-    }
-
-
-    if (
-      String(password).length <
-      8
-    ) {
-      throw new Error(
-        "La contraseña debe tener al menos 8 caracteres"
-      )
-    }
-
-
-    if (!nombre) {
-      throw new Error(
-        "El nombre completo es obligatorio"
-      )
-    }
-
-
-    if (!empresaFinal) {
-      throw new Error(
-        "La empresa es obligatoria"
-      )
-    }
-
-
-    /* ========================================================
-       COMPROBAR SI YA EXISTE EN PROFILES
-       ======================================================== */
-
-    const {
-      data: existente,
-      error: errorExistente
-    } =
-      await this.db
-        .from(
-          "profiles"
-        )
-        .select(
-          "id,email"
-        )
-        .ilike(
-          "email",
-          correo
-        )
-        .maybeSingle()
-
-
-    if (errorExistente) {
-      throw errorExistente
-    }
-
-
-    if (existente) {
-      throw new Error(
-        "Ese correo ya está registrado en RIMBERIO"
-      )
-    }
-
-
-    let nuevoUsuarioId =
-      null
-
-
-    try {
-
-      /* ======================================================
-         CREAR CUENTA EN SUPABASE AUTH
-         ====================================================== */
-
-      const {
-        data: authData,
-        error: authError
-      } =
-        await this.db
-          .auth
-          .admin
-          .createUser({
-
-            email:
-              correo,
-
-            password,
-
-            /*
-             * La cuenta la crea un administrador,
-             * por lo tanto no necesita pasar por
-             * el proceso público de verificación.
-             */
-            email_confirm:
-              true,
-
-            user_metadata: {
-              full_name:
-                nombre
-            }
-
-          })
-
-
-      if (authError) {
-
-        if (
-          authError.message
-            ?.toLowerCase()
-            .includes(
-              "already"
-            )
-        ) {
-          throw new Error(
-            "Ese correo ya está registrado"
-          )
-        }
-
-
-        throw authError
-      }
-
-
-      if (
-        !authData?.user?.id
-      ) {
-        throw new Error(
-          "Supabase no devolvió el usuario creado"
-        )
-      }
-
-
-      nuevoUsuarioId =
-        authData.user.id
-
-
-      /* ======================================================
-         ACTUALIZAR / CREAR PERFIL
-         ====================================================== */
-
-      /*
-       * Supabase puede crear automáticamente
-       * profiles mediante el trigger que ya tiene
-       * el proyecto.
-       *
-       * Usamos UPSERT para que funcione tanto si
-       * el trigger ya lo creó como si todavía no.
-       */
-      const {
-        data: perfil,
-        error: perfilError
-      } =
-        await this.db
-          .from(
-            "profiles"
-          )
-          .upsert(
-            {
-              id:
-                nuevoUsuarioId,
-
-              email:
-                correo,
-
-              full_name:
-                nombre,
-
-              /*
-               * Rol normal definitivo del ERP.
-               */
-              role:
-                "usuario",
-
-              empresa:
-                empresaFinal,
-
-              /*
-               * Todo usuario creado desde
-               * Administración empieza activo.
-               */
-              activo:
-                true
-            },
-            {
-              onConflict:
-                "id"
-            }
-          )
-          .select(
-            PROFILE_FIELDS
-          )
-          .single()
-
-
-      if (perfilError) {
-        throw perfilError
-      }
-
-
-      /* ======================================================
-         RESULTADO
-         ====================================================== */
-
-      return perfil
-
-    } catch (error) {
-
-      /* ======================================================
-         ROLLBACK
-         ====================================================== */
-
-      /*
-       * Si Auth se creó correctamente pero falló
-       * profiles, eliminamos la cuenta para evitar
-       * usuarios incompletos.
-       */
-      if (nuevoUsuarioId) {
-
-        try {
-
-          await this.db
-            .auth
-            .admin
-            .deleteUser(
-              nuevoUsuarioId
-            )
-
-        } catch (
-          rollbackError
-        ) {
-
-          console.error(
-            "No se pudo revertir el usuario:",
-            rollbackError
-          )
-
-        }
-
-      }
-
-
-      throw error
-    }
+async crearUsuario({ correoAcceso, correoPersonal, fullName, empresa }) {
+  const acceso = String(correoAcceso || "").trim().toLowerCase()
+  const personal = String(correoPersonal || "").trim().toLowerCase()
+  const nombre = String(fullName || "").trim()
+  const empresaFinal = String(empresa || "").trim()
+
+  if (!acceso) {
+    throw new Error("El correo de acceso es obligatorio")
   }
 
+  if (DOMINIO_EMPRESA && !acceso.endsWith(`@${DOMINIO_EMPRESA}`)) {
+    throw new Error(`El correo de acceso debe pertenecer al dominio @${DOMINIO_EMPRESA}`)
+  }
+
+  if (!personal) {
+    throw new Error("El correo personal es obligatorio")
+  }
+
+  if (!nombre) {
+    throw new Error("El nombre completo es obligatorio")
+  }
+
+  if (!empresaFinal) {
+    throw new Error("La empresa es obligatoria")
+  }
+
+  const { data: existente, error: errorExistente } = await this.db
+    .from("profiles")
+    .select("id,email")
+    .ilike("email", acceso)
+    .maybeSingle()
+
+  if (errorExistente) {
+    throw errorExistente
+  }
+
+  if (existente) {
+    throw new Error("Ese correo de acceso ya está registrado en RIMBERIO")
+  }
+
+  let nuevoUsuarioId = null
+
+  try {
+    const { data: authData, error: authError } = await this.db.auth.admin.createUser({
+      email: acceso,
+      password: crypto.randomBytes(24).toString("hex"),
+      email_confirm: true,
+      user_metadata: { full_name: nombre }
+    })
+
+    if (authError) {
+      if (authError.message?.toLowerCase().includes("already")) {
+        throw new Error("Ese correo de acceso ya está registrado")
+      }
+      throw authError
+    }
+
+    if (!authData?.user?.id) {
+      throw new Error("Supabase no devolvió el usuario creado")
+    }
+
+    nuevoUsuarioId = authData.user.id
+
+    const { data: perfil, error: perfilError } = await this.db
+      .from("profiles")
+      .upsert(
+        {
+          id: nuevoUsuarioId,
+          email: acceso,
+          usuario: acceso,
+          full_name: nombre,
+          role: "trabajador",
+          empresa: empresaFinal,
+          activo: false
+        },
+        { onConflict: "id" }
+      )
+      .select(PROFILE_FIELDS)
+      .single()
+
+    if (perfilError) {
+      throw perfilError
+    }
+
+    const activacionModel = new AccountActivationModel()
+    const { token } = await activacionModel.crear({
+      userId: nuevoUsuarioId,
+      email: personal
+    })
+
+    await MailService.enviarActivacion({ email: personal, nombre, token })
+
+    return perfil
+  } catch (error) {
+    if (nuevoUsuarioId) {
+      try {
+        await this.db.auth.admin.deleteUser(nuevoUsuarioId)
+      } catch (rollbackError) {
+        console.error("No se pudo revertir el usuario:", rollbackError)
+      }
+    }
+
+    throw error
+  }
+}
+////////////////////////////////////////////////////////////////////////////////////////////
 
   /* ==========================================================
      LISTAR USUARIOS

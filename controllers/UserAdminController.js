@@ -22,248 +22,81 @@ const idNumericoValido = (valor) => {
 
 class UserAdminController {
 
+async crearUsuario(req, res) {
+  try {
+    const {
+      correo_acceso,
+      correoAcceso,
+      correo_personal,
+      correoPersonal,
+      full_name,
+      fullName,
+      empresa
+    } = req.body || {}
 
-  /* ==========================================================
-     CREAR USUARIO
-     ========================================================== */
+    const nombre = String(full_name || fullName || "").trim()
+    const acceso = String(correo_acceso || correoAcceso || "").trim().toLowerCase()
+    const personal = String(correo_personal || correoPersonal || "").trim().toLowerCase()
+    const empresaFinal = String(empresa || "").trim()
 
-  async crearUsuario(
-    req,
-    res
-  ) {
-
-    try {
-
-      const {
-        email,
-        password,
-        full_name,
-        fullName,
-        empresa
-      } =
-        req.body || {}
-
-
-      const nombre =
-        String(
-          full_name ||
-          fullName ||
-          ""
-        ).trim()
-
-
-      const correo =
-        String(
-          email || ""
-        )
-          .trim()
-          .toLowerCase()
-
-
-      const empresaFinal =
-        String(
-          empresa || ""
-        ).trim()
-
-
-      if (!nombre) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "El nombre completo es obligatorio"
-          })
-      }
-
-
-      if (!correo) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "El correo es obligatorio"
-          })
-      }
-
-
-      const emailValido =
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-          .test(
-            correo
-          )
-
-
-      if (!emailValido) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "Ingresa un correo electrónico válido"
-          })
-      }
-
-
-      if (!password) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "La contraseña es obligatoria"
-          })
-      }
-
-
-      if (
-        String(
-          password
-        ).length <
-        8
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "La contraseña debe tener al menos 8 caracteres"
-          })
-      }
-
-
-      if (!empresaFinal) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "La empresa es obligatoria"
-          })
-      }
-
-
-      const model =
-        new UserAdminModel(
-          req.user
-        )
-
-
-      const usuario =
-        await model
-          .crearUsuario({
-            email:
-              correo,
-
-            password:
-              String(
-                password
-              ),
-
-            fullName:
-              nombre,
-
-            empresa:
-              empresaFinal
-          })
-
-
-      return res
-        .status(201)
-        .json({
-
-          mensaje:
-            "Usuario registrado correctamente",
-
-          usuario
-
-        })
-
-    } catch (error) {
-
-      console.error(
-        "Error creando usuario:",
-        error
-      )
-
-
-      const mensaje =
-        String(
-          error?.message ||
-          ""
-        )
-
-
-      const mensajeLower =
-        mensaje.toLowerCase()
-
-
-      if (
-        mensajeLower.includes(
-          "ya está registrado"
-        ) ||
-        mensajeLower.includes(
-          "already registered"
-        ) ||
-        mensajeLower.includes(
-          "already been registered"
-        ) ||
-        mensajeLower.includes(
-          "user already"
-        )
-      ) {
-
-        return res
-          .status(409)
-          .json({
-            error:
-              "Ese correo ya está registrado en RIMBERIO"
-          })
-      }
-
-
-      if (
-        mensajeLower.includes(
-          "invalid email"
-        )
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "El correo electrónico no es válido"
-          })
-      }
-
-
-      if (
-        mensajeLower.includes(
-          "password"
-        )
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              mensaje ||
-              "La contraseña no cumple los requisitos"
-          })
-      }
-
-
-      return res
-        .status(500)
-        .json({
-          error:
-            mensaje ||
-            "No se pudo registrar el usuario"
-        })
+    if (!nombre) {
+      return res.status(400).json({ error: "El nombre completo es obligatorio" })
     }
-  }
 
+    if (!acceso) {
+      return res.status(400).json({ error: "El correo de acceso es obligatorio" })
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acceso)) {
+      return res.status(400).json({ error: "Ingresa un correo de acceso válido" })
+    }
+
+    if (!personal) {
+      return res.status(400).json({ error: "El correo personal es obligatorio" })
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personal)) {
+      return res.status(400).json({ error: "Ingresa un correo personal válido" })
+    }
+
+    if (!empresaFinal) {
+      return res.status(400).json({ error: "La empresa es obligatoria" })
+    }
+
+    const model = new UserAdminModel(req.user)
+
+    const usuario = await model.crearUsuario({
+      correoAcceso: acceso,
+      correoPersonal: personal,
+      fullName: nombre,
+      empresa: empresaFinal
+    })
+
+    return res.status(201).json({
+      mensaje: "Usuario registrado correctamente. Se envió el correo de activación a su correo personal.",
+      usuario
+    })
+  } catch (error) {
+    console.error("Error creando usuario:", error)
+
+    const mensaje = String(error?.message || "")
+    const mensajeLower = mensaje.toLowerCase()
+
+    if (
+      mensajeLower.includes("ya está registrado") ||
+      mensajeLower.includes("already registered") ||
+      mensajeLower.includes("user already")
+    ) {
+      return res.status(409).json({ error: mensaje })
+    }
+
+    if (mensajeLower.includes("dominio")) {
+      return res.status(400).json({ error: mensaje })
+    }
+
+    return res.status(500).json({ error: mensaje || "No se pudo registrar el usuario" })
+  }
+}
 
   /* ==========================================================
      LISTAR USUARIOS

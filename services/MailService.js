@@ -636,40 +636,28 @@ class MailService {
      URL INVITACION
      ======================================================== */
 
-  crearUrlInvitacion(
-    token
-  ) {
-
+  crearUrlInvitacion(token) {
     const {
       frontendUrl
     } =
       this
         .obtenerConfiguracion()
-
-
     const tokenFinal =
       String(
         token ||
         ""
       ).trim()
 
-
-    if (
-      !tokenFinal
-    ) {
-
+    if (!tokenFinal) {
       throw new Error(
         "El token de invitación es obligatorio"
       )
     }
-
-
     const url =
       new URL(
         "/invitaciones/aceptar",
         frontendUrl
       )
-
 
     url.searchParams
       .set(
@@ -677,12 +665,43 @@ class MailService {
         tokenFinal
       )
 
-
     return url
       .toString()
   }
+  
+/*=======  activacion de cuentas ========*/
+crearUrlActivacion(token) {
+  const { frontendUrl } = this.obtenerConfiguracion()
+  const tokenFinal = String(token || "").trim()
 
+  if (!tokenFinal) {
+    throw new Error("El token de activación es obligatorio")
+  }
 
+  const url = new URL("/activar-cuenta", frontendUrl)
+  url.searchParams.set("token", tokenFinal)
+  return url.toString()
+}
+
+async enviarActivacion({ email, nombre, token }) {
+  const correo = normalizarCorreo(email)
+
+  if (!correoValido(correo)) {
+    throw new Error("El correo de activación no es válido")
+  }
+
+  const url = this.crearUrlActivacion(token)
+  const nombreUsuario = String(nombre || "").trim() || "Usuario"
+  const subject = "Activa tu cuenta | RIMBERIO"
+
+  // mismo layout HTML que enviarInvitacion/enviarCodigoRecuperacion,
+  // cambiando el título ("Activa tu cuenta"), el texto y el botón
+  // ("Activar mi cuenta") para que apunten a `url`
+  const html = `...` // calca la plantilla de enviarInvitacion
+
+  const resultado = await this.enviarCorreo({ email: correo, nombre: nombreUsuario, subject, html })
+  return { ...resultado, url }
+}
   /* ========================================================
      URL RECUPERACION
      ======================================================== */
@@ -1178,7 +1197,105 @@ class MailService {
       url
     }
   }
+  /* ========================================================
+     URL ACTIVACION
+     ======================================================== */
 
+  crearUrlActivacion(token) {
+    const { frontendUrl } = this.obtenerConfiguracion()
+
+    const tokenFinal = String(token || "").trim()
+
+    if (!tokenFinal) {
+      throw new Error("El token de activación es obligatorio")
+    }
+
+    const url = new URL("/activar-cuenta", frontendUrl)
+    url.searchParams.set("token", tokenFinal)
+
+    return url.toString()
+  }
+
+
+  /* ========================================================
+     ENVIAR ACTIVACION DE CUENTA
+     ======================================================== */
+
+  async enviarActivacion({ email, nombre, token }) {
+    const correo = normalizarCorreo(email)
+
+    if (!correoValido(correo)) {
+      throw new Error("El correo de activación no es válido")
+    }
+
+    const url = this.crearUrlActivacion(token)
+    const nombreUsuario = String(nombre || "Usuario").trim() || "Usuario"
+    const subject = "Activa tu cuenta | RIMBERIO"
+
+    const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Activa tu cuenta | RIMBERIO</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f2ee;font-family:Arial,Helvetica,sans-serif;color:#2e261f;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;background:#f6f2ee;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #eadfd5;border-radius:16px;overflow:hidden;">
+          <tr>
+            <td style="padding:24px 28px;border-bottom:1px solid #eadfd5;">
+              <div style="font-size:20px;font-weight:700;letter-spacing:0.04em;color:#c1541f;">RIMBERIO</div>
+              <div style="margin-top:4px;font-size:13px;color:#8a796a;">Gestión colaborativa para restaurantes</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px;">
+              <h1 style="margin:0 0 14px;font-size:23px;line-height:1.3;color:#2e261f;">
+                Activa tu cuenta
+              </h1>
+              <p style="margin:0 0 24px;color:#6d5f53;font-size:15px;line-height:1.7;">
+                Hola <strong>${escaparHtml(nombreUsuario)}</strong>. Un administrador creó una
+                cuenta para ti en RIMBERIO con el correo <strong>${escaparHtml(correo)}</strong>.
+                Para empezar a usarla, elige tu contraseña.
+              </p>
+              <div style="text-align:center;margin:28px 0;">
+                <a href="${escaparHtml(url)}" style="display:inline-block;background:#c1541f;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;padding:13px 24px;border-radius:9px;">
+                  Activar mi cuenta
+                </a>
+              </div>
+              <p style="margin:22px 0 5px;color:#8a796a;font-size:12px;line-height:1.6;">
+                Este enlace vence en 7 días.
+              </p>
+              <p style="margin:0;color:#8a796a;font-size:12px;line-height:1.6;">
+                Si no esperabas este correo, puedes ignorarlo.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px;background:#faf7f4;border-top:1px solid #eadfd5;color:#8a796a;font-size:11px;line-height:1.6;">
+              Este es un mensaje automático de RIMBERIO.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `.trim()
+
+    const resultado = await this.enviarCorreo({
+      email: correo,
+      nombre: nombreUsuario,
+      subject,
+      html
+    })
+
+    return { ...resultado, url }
+  }
 
   /* ========================================================
      ENVIAR CODIGO DE RECUPERACION

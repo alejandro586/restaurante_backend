@@ -50,9 +50,16 @@ import courseAdminRoutes
    RECUPERACION DE CONTRASEÑA
    ========================================================== */
 
+   
 import passwordResetRoutes
   from "./routes/password-reset.routes.js"
 
+/* ==========================================================
+   activacion de cuentas
+   ========================================================== */
+
+import activationRoutes
+  from "./routes/activation.routes.js"
 
 /* ==========================================================
    PROYECTOS
@@ -213,6 +220,14 @@ app.use(
   authRoutes
 )
 
+/* ==========================================================
+   ACTIVACION DE CUENTAS
+   ========================================================== */
+
+app.use(
+  "/api/activation",
+  activationRoutes
+)
 
 /* ==========================================================
    BIG DATA - IMPORTACIONES
