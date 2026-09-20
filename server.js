@@ -23,6 +23,9 @@ import compararRoutes
 import tareaRoutes
   from "./routes/tarea.routes.js"
 
+import facialRoutes
+  from "./routes/facial.routes.js"
+
 
 /* ==========================================================
    CURSOS
@@ -198,7 +201,7 @@ app.use(
 app.use(
   express.json({
     limit:
-      "2mb"
+      "8mb"
   })
 )
 
@@ -256,6 +259,16 @@ app.use(
 app.use(
   "/api/tareas",
   tareaRoutes
+)
+
+
+/* ==========================================================
+   RECONOCIMIENTO FACIAL - WORKFLOW VISUAL
+   ========================================================== */
+
+app.use(
+  "/api/facial",
+  facialRoutes
 )
 
 

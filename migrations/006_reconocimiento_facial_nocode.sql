@@ -1,0 +1,260 @@
+/* ==========================================================
+   RIMBERIO - MODULO 2: RECONOCIMIENTO FACIAL
+   Flujo visual externo de 7 nodos + historial local
+   ========================================================== */
+
+
+/* ==========================================================
+   1. CONVERTIR "MODULO 2" EN "RECONOCIMIENTO FACIAL"
+   ========================================================== */
+
+do $$
+declare
+  v_curso_id public.cursos.id%type;
+begin
+  /* Primero buscamos si el curso ya existe con el slug definitivo. */
+  select id
+    into v_curso_id
+  from public.cursos
+  where lower(slug) = 'reconocimiento-facial'
+  limit 1;
+
+  /* Si no existe, intentamos reutilizar el antiguo Modulo 2. */
+  if v_curso_id is null then
+    select id
+      into v_curso_id
+    from public.cursos
+    where lower(coalesce(slug, '')) = 'modulo-2'
+       or lower(coalesce(nombre, '')) in (
+         'modulo 2',
+         'módulo 2'
+       )
+    order by id
+    limit 1;
+  end if;
+
+  /* Si tampoco existe, lo creamos. */
+  if v_curso_id is null then
+    insert into public.cursos (
+      nombre,
+      slug,
+      descripcion,
+      orden,
+      activo
+    )
+    values (
+      'Reconocimiento Facial',
+      'reconocimiento-facial',
+      'Detección de rostros y clasificación de expresiones faciales visibles mediante un flujo visual sin código.',
+      2,
+      true
+    )
+    returning id
+      into v_curso_id;
+  else
+    update public.cursos
+    set
+      nombre = 'Reconocimiento Facial',
+      slug = 'reconocimiento-facial',
+      descripcion = 'Detección de rostros y clasificación de expresiones faciales visibles mediante un flujo visual sin código.',
+      orden = 2,
+      activo = true
+    where id = v_curso_id;
+  end if;
+
+
+  /* ========================================================
+     2. ACTIVIDADES DEL CURSO
+     ======================================================== */
+
+  update public.curso_modulos
+  set
+    curso_id = v_curso_id,
+    nombre = 'Reconocimiento en vivo',
+    slug = 'en-vivo',
+    descripcion = 'Captura un fotograma de la cámara y lo analiza con el Workflow visual.',
+    orden = 1,
+    activo = true
+  where clave = 'facial.en_vivo';
+
+  if not found then
+    insert into public.curso_modulos (
+      curso_id,
+      nombre,
+      slug,
+      clave,
+      descripcion,
+      orden,
+      activo
+    )
+    values (
+      v_curso_id,
+      'Reconocimiento en vivo',
+      'en-vivo',
+      'facial.en_vivo',
+      'Captura un fotograma de la cámara y lo analiza con el Workflow visual.',
+      1,
+      true
+    );
+  end if;
+
+
+  update public.curso_modulos
+  set
+    curso_id = v_curso_id,
+    nombre = 'Analizar imagen',
+    slug = 'analizar-imagen',
+    descripcion = 'Permite subir una fotografía para analizar la expresión facial visible.',
+    orden = 2,
+    activo = true
+  where clave = 'facial.analizar_imagen';
+
+  if not found then
+    insert into public.curso_modulos (
+      curso_id,
+      nombre,
+      slug,
+      clave,
+      descripcion,
+      orden,
+      activo
+    )
+    values (
+      v_curso_id,
+      'Analizar imagen',
+      'analizar-imagen',
+      'facial.analizar_imagen',
+      'Permite subir una fotografía para analizar la expresión facial visible.',
+      2,
+      true
+    );
+  end if;
+
+
+  update public.curso_modulos
+  set
+    curso_id = v_curso_id,
+    nombre = 'Historial',
+    slug = 'historial',
+    descripcion = 'Muestra los análisis realizados sin almacenar las fotografías.',
+    orden = 3,
+    activo = true
+  where clave = 'facial.historial';
+
+  if not found then
+    insert into public.curso_modulos (
+      curso_id,
+      nombre,
+      slug,
+      clave,
+      descripcion,
+      orden,
+      activo
+    )
+    values (
+      v_curso_id,
+      'Historial',
+      'historial',
+      'facial.historial',
+      'Muestra los análisis realizados sin almacenar las fotografías.',
+      3,
+      true
+    );
+  end if;
+
+
+  update public.curso_modulos
+  set
+    curso_id = v_curso_id,
+    nombre = 'Estadísticas',
+    slug = 'estadisticas',
+    descripcion = 'Resume las expresiones faciales visibles registradas y la confianza media.',
+    orden = 4,
+    activo = true
+  where clave = 'facial.estadisticas';
+
+  if not found then
+    insert into public.curso_modulos (
+      curso_id,
+      nombre,
+      slug,
+      clave,
+      descripcion,
+      orden,
+      activo
+    )
+    values (
+      v_curso_id,
+      'Estadísticas',
+      'estadisticas',
+      'facial.estadisticas',
+      'Resume las expresiones faciales visibles registradas y la confianza media.',
+      4,
+      true
+    );
+  end if;
+end
+$$;
+
+
+/* ==========================================================
+   3. HISTORIAL DE ANALISIS
+   No almacena la imagen ni una plantilla biométrica.
+   ========================================================== */
+
+create table if not exists public.facial_analyses (
+  id bigint generated by default as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  user_email text,
+  user_name text,
+  user_role text,
+  empresa text,
+  expression_key text not null,
+  expression_label text not null,
+  confidence double precision not null default 0
+    check (confidence >= 0 and confidence <= 1),
+  source text not null default 'archivo'
+    check (source in ('camara', 'archivo')),
+  provider text not null default 'roboflow-workflow',
+  predictions jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+
+create index if not exists facial_analyses_user_id_idx
+  on public.facial_analyses(user_id);
+
+create index if not exists facial_analyses_created_at_idx
+  on public.facial_analyses(created_at desc);
+
+create index if not exists facial_analyses_expression_idx
+  on public.facial_analyses(expression_key);
+
+
+/* ==========================================================
+   4. RLS
+   El backend usa service_role. Si un usuario consulta la tabla
+   directamente con su sesión, solo puede leer sus propios datos.
+   ========================================================== */
+
+alter table public.facial_analyses
+  enable row level security;
+
+
+drop policy if exists facial_analyses_select_own
+  on public.facial_analyses;
+
+create policy facial_analyses_select_own
+  on public.facial_analyses
+  for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+
+grant select
+  on public.facial_analyses
+  to authenticated;
+
+
+comment on table public.facial_analyses is
+  'Resultados estadísticos del módulo de reconocimiento facial. No almacena fotografías ni plantillas biométricas.';
