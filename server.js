@@ -680,3 +680,8 @@ app.listen(
     )
   }
 )
+// Importar la ruta
+const facialRoutes = require('./routes/facialRoutes');
+
+// Registrarla en los middlewares de Express (por ejemplo bajo el prefijo /api/facial)
+app.use('/api/facial', facialRoutes);
