@@ -53,16 +53,17 @@ import courseAdminRoutes
    RECUPERACION DE CONTRASEÑA
    ========================================================== */
 
-   
 import passwordResetRoutes
   from "./routes/password-reset.routes.js"
 
+
 /* ==========================================================
-   activacion de cuentas
+   ACTIVACION DE CUENTAS
    ========================================================== */
 
 import activationRoutes
   from "./routes/activation.routes.js"
+
 
 /* ==========================================================
    PROYECTOS
@@ -223,6 +224,7 @@ app.use(
   authRoutes
 )
 
+
 /* ==========================================================
    ACTIVACION DE CUENTAS
    ========================================================== */
@@ -231,6 +233,7 @@ app.use(
   "/api/activation",
   activationRoutes
 )
+
 
 /* ==========================================================
    BIG DATA - IMPORTACIONES
@@ -680,8 +683,3 @@ app.listen(
     )
   }
 )
-// Importar la ruta
-const facialRoutes = require('./routes/facialRoutes');
-
-// Registrarla en los middlewares de Express (por ejemplo bajo el prefijo /api/facial)
-app.use('/api/facial', facialRoutes);
