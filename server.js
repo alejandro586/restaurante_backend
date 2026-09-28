@@ -1,95 +1,66 @@
 import "dotenv/config"
 
-import express
-  from "express"
-
-import cors
-  from "cors"
+import express from "express"
+import cors from "cors"
 
 
 /* ==========================================================
    RUTAS PRINCIPALES
    ========================================================== */
 
-import authRoutes
-  from "./routes/auth.routes.js"
-
-import importRoutes
-  from "./routes/import.routes.js"
-
-import compararRoutes
-  from "./routes/comparar.routes.js"
-
-import tareaRoutes
-  from "./routes/tarea.routes.js"
-
-import facialRoutes
-  from "./routes/facial.routes.js"
+import authRoutes from "./routes/auth.routes.js"
+import importRoutes from "./routes/import.routes.js"
+import compararRoutes from "./routes/comparar.routes.js"
+import tareaRoutes from "./routes/tarea.routes.js"
+import facialRoutes from "./routes/facial.routes.js"
 
 
 /* ==========================================================
    CURSOS
    ========================================================== */
 
-import courseRoutes
-  from "./routes/course.routes.js"
-
-import courseDocumentRoutes
-  from "./routes/course-document.routes.js"
+import courseRoutes from "./routes/course.routes.js"
+import courseDocumentRoutes from "./routes/course-document.routes.js"
 
 
 /* ==========================================================
    ADMINISTRACION
    ========================================================== */
 
-import adminUserRoutes
-  from "./routes/admin-user.routes.js"
-
-import courseAdminRoutes
-  from "./routes/course-admin.routes.js"
+import adminUserRoutes from "./routes/admin-user.routes.js"
+import courseAdminRoutes from "./routes/course-admin.routes.js"
 
 
 /* ==========================================================
    RECUPERACION DE CONTRASEÑA
    ========================================================== */
 
-import passwordResetRoutes
-  from "./routes/password-reset.routes.js"
+import passwordResetRoutes from "./routes/password-reset.routes.js"
 
 
 /* ==========================================================
    ACTIVACION DE CUENTAS
    ========================================================== */
 
-import activationRoutes
-  from "./routes/activation.routes.js"
+import activationRoutes from "./routes/activation.routes.js"
 
 
 /* ==========================================================
    PROYECTOS
    ========================================================== */
 
-import projectRoutes
-  from "./routes/project.routes.js"
-
-import projectTaskRoutes
-  from "./routes/project-task.routes.js"
-
-import projectInvitationRoutes
-  from "./routes/project-invitation.routes.js"
+import projectRoutes from "./routes/project.routes.js"
+import projectTaskRoutes from "./routes/project-task.routes.js"
+import projectInvitationRoutes from "./routes/project-invitation.routes.js"
 
 
 /* ==========================================================
    APP
    ========================================================== */
 
-const app =
-  express()
+const app = express()
 
-
-const port =
-  process.env.PORT ||
-  4000
+const port = process.env.PORT || 4000
 
 
 /* ==========================================================
@@ -97,80 +68,86 @@ const port =
    ========================================================== */
 
 /**
- * CLIENT_URL puede contener varias URLs
+ * CLIENT_URL puede contener una o varias URLs
  * separadas por coma.
  *
- * Ejemplo:
+ * Ejemplo en Render:
  *
- * CLIENT_URL=
- * https://restaurante-rimberio.vercel.app,
- * http://localhost:5173
+ * CLIENT_URL=https://restaurante-rimberio.vercel.app,http://localhost:5173
  */
 
-const origins =
-  (
-    process.env.CLIENT_URL ||
-    ""
-  )
-    .split(",")
-    .map(
-      (
-        origin
-      ) =>
-        origin.trim()
-    )
-    .filter(
-      Boolean
-    )
+const origins = (process.env.CLIENT_URL || "")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean)
+
+
+/*
+ * Muestra durante el inicio del servidor
+ * qué dominios están autorizados.
+ *
+ * NO muestra claves privadas.
+ */
+console.log("========================================")
+console.log("CONFIGURACION CORS")
+console.log("Orígenes permitidos:", origins)
+console.log("========================================")
 
 
 app.use(
   cors({
-
-    origin: (
-      origin,
-      callback
-    ) => {
+    origin: (origin, callback) => {
 
       /*
-       * Permite:
+       * Solicitudes que no incluyen Origin.
        *
-       * - curl
+       * Ejemplos:
+       * - Render health checks
        * - Postman
-       * - Render
-       * - health checks
+       * - curl
+       * - llamadas internas
        */
-      if (
-        !origin
-      ) {
-
-        return callback(
-          null,
-          true
-        )
+      if (!origin) {
+        return callback(null, true)
       }
 
 
       /*
-       * Si CLIENT_URL todavía
-       * no está configurado,
-       * permitimos temporalmente.
+       * Normalizamos el origen.
        */
-      if (
-        origins.length ===
-        0
-      ) {
+      const normalizedOrigin = origin
+        .trim()
+        .replace(/\/$/, "")
 
-        return callback(
-          null,
-          true
+
+      /*
+       * Si CLIENT_URL no está configurado,
+       * permitimos temporalmente la petición.
+       *
+       * Esto evita romper completamente
+       * el backend por una variable faltante.
+       */
+      if (origins.length === 0) {
+
+        console.warn(
+          "⚠️ CLIENT_URL no está configurado."
         )
+
+        console.warn(
+          "⚠️ Permitiendo temporalmente:",
+          normalizedOrigin
+        )
+
+        return callback(null, true)
       }
 
 
+      /*
+       * Origen autorizado.
+       */
       if (
         origins.includes(
-          origin
+          normalizedOrigin
         )
       ) {
 
@@ -179,6 +156,36 @@ app.use(
           true
         )
       }
+
+
+      /*
+       * IMPORTANTE:
+       *
+       * Si CORS bloquea una petición,
+       * Render mostrará exactamente
+       * qué dominio intentó conectarse.
+       */
+      console.error(
+        "========================================"
+      )
+
+      console.error(
+        "❌ CORS BLOQUEADO"
+      )
+
+      console.error(
+        "Origen recibido:",
+        normalizedOrigin
+      )
+
+      console.error(
+        "Orígenes permitidos:",
+        origins
+      )
+
+      console.error(
+        "========================================"
+      )
 
 
       return callback(
@@ -188,9 +195,34 @@ app.use(
       )
     },
 
-    credentials:
-      true
 
+    /*
+     * Necesario si utilizas cookies,
+     * sesiones o credenciales.
+     */
+    credentials: true,
+
+
+    /*
+     * Métodos HTTP permitidos.
+     */
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS"
+    ],
+
+
+    /*
+     * Headers permitidos.
+     */
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization"
+    ]
   })
 )
 
@@ -201,16 +233,14 @@ app.use(
 
 app.use(
   express.json({
-    limit:
-      "8mb"
+    limit: "8mb"
   })
 )
 
 
 app.use(
   express.urlencoded({
-    extended:
-      true
+    extended: true
   })
 )
 
@@ -327,8 +357,6 @@ app.use(
 /**
  * Exclusivo administrador.
  *
- * Ejemplos:
- *
  * GET
  * /api/admin/users
  *
@@ -369,7 +397,6 @@ app.use(
 
 /**
  * Exclusivo administrador.
- *
  *
  * CATALOGO
  *
@@ -487,19 +514,11 @@ app.use(
 
 app.get(
   "/api/health",
-  (
-    req,
-    res
-  ) => {
+  (req, res) => {
 
     res.json({
-
-      status:
-        "ok",
-
-      service:
-        "rimberio-api"
-
+      status: "ok",
+      service: "rimberio-api"
     })
   }
 )
@@ -511,19 +530,11 @@ app.get(
 
 app.get(
   "/",
-  (
-    req,
-    res
-  ) => {
+  (req, res) => {
 
     res.json({
-
-      name:
-        "RIMBERIO API",
-
-      status:
-        "online"
-
+      name: "RIMBERIO API",
+      status: "online"
     })
   }
 )
@@ -541,20 +552,12 @@ app.get(
  */
 
 app.use(
-  (
-    req,
-    res
-  ) => {
+  (req, res) => {
 
     res
-      .status(
-        404
-      )
+      .status(404)
       .json({
-
-        error:
-          "Recurso no encontrado"
-
+        error: "Recurso no encontrado"
       })
   }
 )
@@ -565,12 +568,7 @@ app.use(
    ========================================================== */
 
 app.use(
-  (
-    error,
-    req,
-    res,
-    next
-  ) => {
+  (error, req, res, next) => {
 
     console.error(
       "Error no controlado:",
@@ -588,14 +586,10 @@ app.use(
     ) {
 
       return res
-        .status(
-          400
-        )
+        .status(400)
         .json({
-
           error:
             "El archivo supera el tamaño permitido"
-
         })
     }
 
@@ -612,14 +606,9 @@ app.use(
     ) {
 
       return res
-        .status(
-          400
-        )
+        .status(400)
         .json({
-
-          error:
-            error.message
-
+          error: error.message
         })
     }
 
@@ -634,14 +623,10 @@ app.use(
     ) {
 
       return res
-        .status(
-          403
-        )
+        .status(403)
         .json({
-
           error:
             "Origen no permitido"
-
         })
     }
 
@@ -651,9 +636,7 @@ app.use(
        ====================================================== */
 
     return res
-      .status(
-        500
-      )
+      .status(500)
       .json({
 
         error:
@@ -680,6 +663,10 @@ app.listen(
 
     console.log(
       `RIMBERIO API disponible en puerto ${port}`
+    )
+
+    console.log(
+      `Entorno: ${process.env.NODE_ENV || "development"}`
     )
   }
 )
